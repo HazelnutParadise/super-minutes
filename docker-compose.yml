@@ -10,7 +10,7 @@ services:
     environment:
       WHISPER_GATEWAY_URL: http://whisper-gateway:5000
       OLLAMA_URL: http://ollama:11434
-      OLLAMA_MODEL: gemma3:e4b
+      OLLAMA_MODEL: gemma4:e4b
       NODE_ENV: production
     networks:
       - infra-net

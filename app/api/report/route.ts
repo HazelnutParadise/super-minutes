@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 600;
 
 const OLLAMA = process.env.OLLAMA_URL ?? "http://ollama:11434";
-const MODEL = process.env.OLLAMA_MODEL ?? "gemma3:e4b";
+const MODEL = process.env.OLLAMA_MODEL ?? "gemma4:e4b";
 
 interface ReportRequest {
   /** Concatenated transcript with speaker tags + timestamps. */
@@ -21,35 +21,70 @@ interface OllamaChatResponse {
   error?: string;
 }
 
+/**
+ * System prompt — short, with an inline example. Small models (8B-class)
+ * follow JSON schemas more reliably when shown the shape they should emit
+ * than when given a schema declaration alone.
+ */
 const SYSTEM = (languageName: string) =>
-  `You are a senior meeting minutes writer. The user will give you a diarized meeting transcript with speaker tags and timestamps. Write a structured meeting report.
+  `You are a senior meeting minutes writer. Convert the diarized transcript into a structured meeting report.
 
-CRITICAL CONSTRAINTS:
-- Output language: ${languageName}. Every field, heading, and bullet must be written in ${languageName}.
-- Output format: a single JSON object that matches the schema below exactly. No prose, no markdown fences, no commentary before or after the JSON.
-- Be faithful to the transcript: do not invent attendees, decisions, numbers, or commitments that are not present.
-- Prefer plain, declarative sentences. Avoid filler ("In this meeting...", "The participants discussed...").
+# Rules
 
-JSON schema:
+1. **Language**: write every string value (title, summary, conclusions, headings, points, tasks, owners, due) in ${languageName}. Keep keys in English.
+2. **Output**: emit ONE JSON object and NOTHING ELSE. No prose, no markdown fences, no \`\`\`json blocks, no leading commentary. Your reply MUST start with { and end with }.
+3. **Fidelity**: only use facts present in the transcript. Don't invent attendees, decisions, numbers, or commitments.
+4. **Style**: short declarative sentences. No filler like "在這次會議中". \`title\` ≤ 18 chars. Each \`heading\` ≤ 16 chars.
+
+# Example output
+
 {
-  "title": string,                         // ≤ 18 ${languageName} characters, factual
-  "summary": string,                       // 1-3 sentence, single paragraph
-  "conclusions": string[],                 // 2-6 items, each one decision or outcome
-  "topics": [                              // 2-6 topics, in chronological order
-    { "heading": string,                   // ≤ 16 characters
-      "points": string[] }                 // 2-6 bullet points per topic
+  "title": "Sprint 22 範圍確認",
+  "summary": "團隊敲定下個 Sprint 只做離線快取的目錄與詳情頁，個人化推延。",
+  "conclusions": [
+    "Sprint 22 範圍鎖定為離線快取 v1。",
+    "個人化頁面延至 Sprint 23 再評估。"
   ],
-  "actions": [                             // empty array allowed if none stated
-    { "task": string,                      // the action verb-first
-      "owner": string | null,              // speaker name from transcript, or null
-      "due": string | null }               // ISO-ish date or natural phrase, or null
+  "topics": [
+    {
+      "heading": "Sprint 範圍",
+      "points": [
+        "離線快取只做目錄與詳情兩條路由。",
+        "個人化頁面因隱私風險暫不納入。"
+      ]
+    },
+    {
+      "heading": "技術分工",
+      "points": [
+        "志遠負責 service worker。",
+        "Naomi 補上離線徽章元件。"
+      ]
+    }
+  ],
+  "actions": [
+    { "task": "提交離線快取 v1 PR", "owner": "志遠", "due": "本週五" },
+    { "task": "設計離線徽章元件", "owner": "Naomi", "due": null }
   ]
 }
 
-Return ONLY the JSON. Begin your response with { and end with }.`;
+If a field has no content, use an empty string, empty array, or null — do NOT omit the key.`;
 
 const USER_TEMPLATE = (transcript: string) =>
-  `Diarized transcript:\n\n${transcript}\n\nWrite the structured meeting report now.`;
+  `# Transcript\n\n${transcript}\n\nNow emit the JSON object. Begin with { right away.`;
+
+/** Forceful retry — used after the first attempt fails to parse. Makes the
+ *  rule absolutely explicit and gives the model permission to output empty
+ *  arrays so it stops adding apologies. */
+const RETRY_USER_TEMPLATE = (transcript: string) =>
+  `Your previous reply was not valid JSON.
+
+You MUST reply with ONE JSON object, nothing else. The very first character of your reply must be \`{\` and the very last must be \`}\`. Do not include \`\`\`json\`\`\`, do not include any explanation, do not apologise.
+
+# Transcript
+
+${transcript}
+
+Emit the JSON now.`;
 
 export async function POST(req: NextRequest) {
   let payload: ReportRequest;
@@ -82,19 +117,30 @@ export async function POST(req: NextRequest) {
       const abort = new AbortController();
       req.signal.addEventListener("abort", () => abort.abort());
 
-      try {
-        emit({ type: "started", model });
+      const callOllama = async (userMessage: string): Promise<{
+        ok: boolean;
+        rawContent: string;
+        upstreamStatus: number;
+        upstreamBody: string;
+      }> => {
         const upstreamBody = {
           model,
           stream: false,
           format: "json",
-          options: { temperature: 0.2, num_ctx: 8192 },
+          options: {
+            // Lower temp than before — we want deterministic JSON. The model
+            // has all the freedom it needs in the field values; structure is
+            // not a place for sampling diversity.
+            temperature: 0.1,
+            top_p: 0.9,
+            num_ctx: 16384,
+          },
+          keep_alive: "10m",
           messages: [
             { role: "system", content: SYSTEM(languageName) },
-            { role: "user", content: USER_TEMPLATE(payload.transcript) },
+            { role: "user", content: userMessage },
           ],
         };
-
         const r = await fetch(`${OLLAMA}/api/chat`, {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -103,38 +149,87 @@ export async function POST(req: NextRequest) {
         });
         const text = await r.text();
         if (!r.ok) {
-          emit({ type: "result", status: r.status, body: text });
-          return;
+          return {
+            ok: false,
+            rawContent: "",
+            upstreamStatus: r.status,
+            upstreamBody: text,
+          };
         }
-
         let parsed: OllamaChatResponse;
         try {
           parsed = JSON.parse(text);
         } catch {
+          return {
+            ok: false,
+            rawContent: text,
+            upstreamStatus: 502,
+            upstreamBody: text,
+          };
+        }
+        return {
+          ok: true,
+          rawContent: parsed.message?.content ?? "",
+          upstreamStatus: 200,
+          upstreamBody: "",
+        };
+      };
+
+      try {
+        emit({ type: "started", model });
+
+        let attempt: {
+          ok: boolean;
+          rawContent: string;
+          upstreamStatus: number;
+          upstreamBody: string;
+        };
+        let extracted: { ok: true; report: unknown } | { ok: false; raw: string } = {
+          ok: false,
+          raw: "",
+        };
+
+        // Attempt 1 — standard prompt.
+        attempt = await callOllama(USER_TEMPLATE(payload.transcript));
+        if (!attempt.ok) {
           emit({
             type: "result",
-            status: 502,
-            body: JSON.stringify({
-              error: "Ollama returned non-JSON",
-              raw: text.slice(0, 500),
-            }),
+            status: attempt.upstreamStatus,
+            body: attempt.upstreamBody || JSON.stringify({ error: "Ollama upstream failed" }),
           });
           return;
         }
+        extracted = extractJsonReport(attempt.rawContent);
 
-        const content = parsed.message?.content ?? "";
-        // Some models still wrap JSON in fences even with format=json. Strip.
-        const cleaned = stripFences(content);
-        let report: unknown;
-        try {
-          report = JSON.parse(cleaned);
-        } catch {
+        // Attempt 2 — forceful retry only if attempt 1 was unparseable.
+        if (!extracted.ok) {
+          console.warn(
+            "[report] attempt 1 unparseable, raw tail:",
+            attempt.rawContent.slice(-300)
+          );
+          attempt = await callOllama(RETRY_USER_TEMPLATE(payload.transcript));
+          if (!attempt.ok) {
+            emit({
+              type: "result",
+              status: attempt.upstreamStatus,
+              body: attempt.upstreamBody || JSON.stringify({ error: "Ollama upstream failed" }),
+            });
+            return;
+          }
+          extracted = extractJsonReport(attempt.rawContent);
+        }
+
+        if (!extracted.ok) {
+          console.error(
+            "[report] both attempts unparseable, raw:",
+            extracted.raw.slice(0, 1500)
+          );
           emit({
             type: "result",
             status: 502,
             body: JSON.stringify({
               error: "Model output was not valid JSON",
-              raw: cleaned.slice(0, 1000),
+              raw: extracted.raw.slice(0, 1500),
             }),
           });
           return;
@@ -143,7 +238,7 @@ export async function POST(req: NextRequest) {
         emit({
           type: "result",
           status: 200,
-          body: JSON.stringify({ report, language: languageName }),
+          body: JSON.stringify({ report: extracted.report, language: languageName }),
         });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -171,8 +266,121 @@ export async function POST(req: NextRequest) {
   });
 }
 
-function stripFences(s: string): string {
-  const fenced = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fenced) return fenced[1].trim();
-  return s.trim();
+/**
+ * Multi-stage extractor — turns a possibly-chatty LLM reply into a valid
+ * report object, or surfaces the raw text for diagnosis. Stages:
+ *
+ *   1. Strip BOM and leading whitespace.
+ *   2. Strip markdown fences (```json ... ```) if present.
+ *   3. Strip any preamble before the first `{` and any trailing text after
+ *      the matching close `}` (balanced-brace scan, string-aware).
+ *   4. JSON.parse on the cleaned blob.
+ *   5. If parse fails, try a small set of common repairs (trailing comma,
+ *      single-quoted strings, JS-style comments) and re-parse.
+ *
+ * Returns a discriminated union so the caller can decide whether to retry.
+ */
+function extractJsonReport(
+  content: string
+):
+  | { ok: true; report: Record<string, unknown> }
+  | { ok: false; raw: string } {
+  if (!content) return { ok: false, raw: "" };
+  let s = content.replace(/^﻿/, "").trim();
+
+  // Strip ```json ... ``` (or ``` ... ```). Some Ollama models still emit
+  // fences even with format=json.
+  const fenceMatch = s.match(/^```(?:json|JSON)?\s*([\s\S]*?)\s*```$/);
+  if (fenceMatch) {
+    s = fenceMatch[1].trim();
+  } else {
+    // Also handle the case where the model wraps in a fence but adds chatter
+    // around it: find the first fenced block.
+    const innerFence = s.match(/```(?:json|JSON)?\s*([\s\S]*?)```/);
+    if (innerFence && innerFence[1].trim().startsWith("{")) {
+      s = innerFence[1].trim();
+    }
+  }
+
+  // Slice down to a balanced top-level JSON object. The model sometimes
+  // prefaces with "Here is the JSON:" or appends "Hope this helps!".
+  const sliced = sliceBalancedObject(s);
+  if (sliced) s = sliced;
+
+  // Stage 4 — direct parse.
+  try {
+    const obj = JSON.parse(s);
+    if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+      return { ok: true, report: obj as Record<string, unknown> };
+    }
+  } catch {
+    /* fall through to repairs */
+  }
+
+  // Stage 5 — common repairs.
+  const repaired = repairCommonJsonMistakes(s);
+  if (repaired !== s) {
+    try {
+      const obj = JSON.parse(repaired);
+      if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+        return { ok: true, report: obj as Record<string, unknown> };
+      }
+    } catch {
+      /* surface raw */
+    }
+  }
+
+  return { ok: false, raw: content };
+}
+
+/**
+ * Find the first `{` and the matching `}` that closes it, ignoring braces
+ * inside string literals (including escaped quotes). Returns null if no
+ * balanced object is found.
+ */
+function sliceBalancedObject(s: string): string | null {
+  const start = s.indexOf("{");
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < s.length; i++) {
+    const ch = s[i];
+    if (inString) {
+      if (escape) {
+        escape = false;
+      } else if (ch === "\\") {
+        escape = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+    } else if (ch === "{") {
+      depth++;
+    } else if (ch === "}") {
+      depth--;
+      if (depth === 0) {
+        return s.slice(start, i + 1);
+      }
+    }
+  }
+  return null;
+}
+
+/** Best-effort repairs for JSON mistakes small models commonly make. */
+function repairCommonJsonMistakes(s: string): string {
+  let out = s;
+  // Strip JS-style line/block comments (rare but happens).
+  out = out.replace(/\/\*[\s\S]*?\*\//g, "");
+  out = out.replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+  // Remove trailing commas before } or ].
+  out = out.replace(/,(\s*[}\]])/g, "$1");
+  // Smart quotes → straight quotes (for string contents — naive but useful).
+  out = out
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'");
+  return out;
 }

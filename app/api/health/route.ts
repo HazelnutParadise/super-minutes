@@ -8,6 +8,6 @@ export async function GET() {
     service: "super-minutes",
     gateway: process.env.WHISPER_GATEWAY_URL ?? "(default)",
     ollama: process.env.OLLAMA_URL ?? "(default)",
-    model: process.env.OLLAMA_MODEL ?? "gemma3:e4b",
+    model: process.env.OLLAMA_MODEL ?? "gemma4:e4b",
   });
 }

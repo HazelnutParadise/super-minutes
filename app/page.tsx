@@ -66,7 +66,7 @@ export default function Home() {
           >
             上傳音訊或影片，瀏覽器先就地分離音軌；Whisper Gateway
             做<span className="underline-vermillion">語者分離與時間對齊</span>；
-            <span className="font-mono text-cream-100">gemma3:e4b</span>
+            <span className="font-mono text-cream-100">gemma4:e4b</span>
             把逐字稿改寫成有
             <em className="font-display not-italic text-cream-100">會議紀要</em>、
             <em className="font-display not-italic text-cream-100">主要結論</em>、
@@ -94,7 +94,7 @@ export default function Home() {
             style={{ animationDelay: "360ms" }}
           >
             <Spec label="ASR" value="Whisper" detail="OpenAI-compatible" />
-            <Spec label="LLM" value="gemma3:e4b" detail="via Ollama" />
+            <Spec label="LLM" value="gemma4:e4b" detail="via Ollama" />
             <Spec label="DIARIZE" value="Auto" detail="pyannote" />
             <Spec label="EXPORT" value="DOCX·PDF·MD" detail="in-browser" />
           </div>
@@ -130,7 +130,7 @@ export default function Home() {
           <Step
             n="03"
             title="LLM 整稿"
-            body="Ollama 端的 gemma3:e4b 收到指定語言的指令，把逐字稿濃縮為四段結構化報告。"
+            body="Ollama 端的 gemma4:e4b 收到指定語言的指令，把逐字稿濃縮為四段結構化報告。"
           />
           <Step
             n="04"
@@ -167,7 +167,7 @@ export default function Home() {
           <Feature
             icon={<Wand2 className="h-4 w-4" />}
             title="LLM 整稿"
-            body="逐字稿交給 gemma3:e4b 改寫成可直接送出的會議報告，輸出語言可自選。"
+            body="逐字稿交給 gemma4:e4b 改寫成可直接送出的會議報告，輸出語言可自選。"
           />
           <Feature
             icon={<Download className="h-4 w-4" />}
