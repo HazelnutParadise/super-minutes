@@ -14,56 +14,26 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    // Pistachio's worker mutates both <html> and <body>:
-    //   document.documentElement.style.setProperty('--banner-height', ...)
-    //   document.body.classList.add('has-banner')
-    //   document.body.style.marginTop = ...
-    // Both fire on DOMContentLoaded — before React hydrates — so each
-    // element needs suppressHydrationWarning. Without it on <html>, the
-    // browser's <html style="--banner-height: 0px"> doesn't match the
-    // server-rendered <html> (no style) and React #418 fires.
+    // suppressHydrationWarning on <html> and <body>: the Pistachio CF
+    // Worker (HazelnutParadise/Pistachio-Global-Announcement-System) sets
+    // style/class on both elements via DOMContentLoaded, before React
+    // hydrates. Without the suppression React sees the attribute diff and
+    // falls back to a full client re-render (flash-and-disappear).
+    //
+    // NO <head> tag in this JSX — intentional. Fonts are loaded via
+    // @import in globals.css. Without a JSX <head>, React doesn't hydrate
+    // head content, and the Worker's injected <style>+<script> in <head>
+    // can't trigger a structural mismatch (#418). This is the only
+    // reliable way to coexist with an HTMLRewriter that appends to <head>.
     <html lang="zh-Hant" className="dark" suppressHydrationWarning>
-      <head>
-        {/* Instrument Serif — distinctive editorial display, italic-leaning. */}
-        {/* Geist Sans — refined neo-grotesque body. */}
-        {/* JetBrains Mono — monospace for timecodes. */}
-        {/* Noto Serif TC — Han glyphs in the editorial idiom. */}
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-          rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossOrigin=""
-        />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Serif+TC:wght@400;500;700&display=swap"
-          rel="stylesheet"
-        />
-      </head>
       <body
         className="min-h-screen bg-background text-foreground font-sans antialiased"
-        // The Pistachio announcement Worker mutates the body element on
-        // DOMContentLoaded — it adds `class="has-banner"` and a
-        // `style="margin-top: Npx"` to make room for the banner. That fires
-        // before React hydrates, so without suppressHydrationWarning here
-        // we get React #418 and React 19 falls back to a fresh client
-        // render (the "flash and disappear" symptom).
         suppressHydrationWarning
       >
-        {/*
-         * Pistachio anchor — the global announcement Worker
-         * (HazelnutParadise/Pistachio-Global-Announcement-System) looks for
-         * this id and injects the banner inside it.
-         *
-         * Rendered via dangerouslySetInnerHTML so the inner #Pistachio-
-         * Announcement div is opaque to React's reconciler entirely — not
-         * just suppressed. With a plain JSX div + suppressHydrationWarning
-         * React 19 still tripped #418 (the Worker also rewrites <html>'s
-         * --banner-height custom property and the IIFE that injects fault
-         * banners runs even before the queued DOMContentLoaded handler).
-         *
-         * The wrapper itself is identical on server and client, so React
-         * never touches it; Pistachio gets a stable id to inject into.
-         */}
+        {/* Pistachio anchor — the Worker looks for this id and injects the
+         *  banner inside it. dangerouslySetInnerHTML makes the inner node
+         *  opaque to React's reconciler so the Worker's DOM mutations
+         *  don't cause hydration issues. */}
         <div
           suppressHydrationWarning
           dangerouslySetInnerHTML={{
@@ -71,14 +41,14 @@ export default function RootLayout({
           }}
         />
 
-        {/* Vellum grain over the whole document — gives the background depth. */}
+        {/* Vellum grain — gives the background depth. */}
         <div className="vellum pointer-events-none fixed inset-0 -z-10 opacity-[0.07]" />
-        {/* Ledger margin line — runs down the entire page like a paper margin. */}
+        {/* Ledger margin line. */}
         <div
           aria-hidden
           className="pointer-events-none fixed inset-y-0 left-[7rem] -z-10 w-px bg-vermillion/30 hidden md:block"
         />
-        {/* Right-edge ornament — small fixed mark. */}
+        {/* Right-edge ornament. */}
         <div
           aria-hidden
           className="pointer-events-none fixed top-6 right-6 -z-10 font-mono text-[10px] tracking-[0.3em] text-cream-500 hidden lg:block"

@@ -1,3 +1,9 @@
+/* Google Fonts — loaded via CSS @import so we don't need a <head> in
+ * layout.tsx. Without a JSX <head>, React doesn't try to hydrate head
+ * content, and the Pistachio CF Worker's injected <style>+<script> in
+ * <head> can't cause a structural hydration mismatch (#418). */
+@import url("https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Serif+TC:wght@400;500;700&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
