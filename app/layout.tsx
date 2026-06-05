@@ -32,6 +32,18 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-screen bg-background text-foreground font-sans antialiased">
+        {/*
+         * Pistachio anchor — the global announcement Worker
+         * (HazelnutParadise/Pistachio-Global-Announcement-System) looks for
+         * this id and injects the banner inside it. Anchoring it here
+         * (instead of letting the Worker insert at the top of <body>) keeps
+         * React's hydration tree stable: the Worker mutates children only,
+         * and `suppressHydrationWarning` tells React not to reconcile them.
+         * Without this you get React #418 because the Worker's injected
+         * banner becomes an unexpected first child of <body>.
+         */}
+        <div id="Pistachio-Announcement" suppressHydrationWarning />
+
         {/* Vellum grain over the whole document — gives the background depth. */}
         <div className="vellum pointer-events-none fixed inset-0 -z-10 opacity-[0.07]" />
         {/* Ledger margin line — runs down the entire page like a paper margin. */}
