@@ -31,7 +31,16 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="min-h-screen bg-background text-foreground font-sans antialiased">
+      <body
+        className="min-h-screen bg-background text-foreground font-sans antialiased"
+        // The Pistachio announcement Worker mutates the body element on
+        // DOMContentLoaded — it adds `class="has-banner"` and a
+        // `style="margin-top: Npx"` to make room for the banner. That fires
+        // before React hydrates, so without suppressHydrationWarning here
+        // we get React #418 and React 19 falls back to a fresh client
+        // render (the "flash and disappear" symptom).
+        suppressHydrationWarning
+      >
         {/*
          * Pistachio anchor — the global announcement Worker
          * (HazelnutParadise/Pistachio-Global-Announcement-System) looks for
