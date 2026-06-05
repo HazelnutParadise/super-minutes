@@ -134,7 +134,7 @@ export default function Home() {
           />
           <Step
             n="03"
-            title="智能整稿"
+            title="AI 整稿"
             body="把逐字稿濃縮成 會議紀要、主要結論、議題要點、待辦行動項 四段結構化報告，輸出語言可自選。"
           />
           <Step
@@ -171,7 +171,7 @@ export default function Home() {
           />
           <Feature
             icon={<Wand2 className="h-4 w-4" />}
-            title="智能整稿"
+            title="AI 整稿"
             body="把逐字稿改寫成可直接送出的會議報告，輸出語言可自選。"
           />
           <Feature
