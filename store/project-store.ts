@@ -10,11 +10,26 @@ import {
 
 export type Script = "original" | "traditional" | "simplified";
 
+/**
+ * One audio leg of the project. A multi-file upload becomes a list of these,
+ * each with the (cumulative) global time `offset` at which it starts. The
+ * AudioBar uses `offset + currentTime(within file)` as the global timeline,
+ * so transcript segments only ever need to know about global time.
+ */
+export interface MediaSegment {
+  fileName: string;
+  url: string;
+  duration: number;
+  /** Global seconds where this leg starts. First leg is 0. */
+  offset: number;
+}
+
 interface ProjectState {
-  sourceFile: File | null;
-  /** Object URL for an <audio> element. We always preview as audio. */
-  mediaUrl: string | null;
-  /** Duration in seconds — set after the browser probes the audio. */
+  /** Files the user picked, in chronological (playback) order. */
+  sourceFiles: File[];
+  /** Audio legs the editor can play; mirrors sourceFiles in order. */
+  mediaSegments: MediaSegment[];
+  /** Total duration in seconds across all legs. */
   duration: number;
   /** Detected ASR language code, e.g. "zh" or "en". */
   language: string;
@@ -33,7 +48,8 @@ interface ProjectState {
   reportLanguage: string | null;
   reportPending: boolean;
 
-  setSource: (file: File | null, url: string | null) => void;
+  setSourceFiles: (files: File[]) => void;
+  setMediaSegments: (segs: MediaSegment[]) => void;
   setDuration: (d: number) => void;
   setLanguage: (l: string) => void;
   setUILanguage: (l: string) => void;
@@ -52,9 +68,19 @@ interface ProjectState {
   reset: () => void;
 }
 
+function revokeAll(segs: MediaSegment[]) {
+  for (const s of segs) {
+    try {
+      URL.revokeObjectURL(s.url);
+    } catch {
+      /* already revoked */
+    }
+  }
+}
+
 export const useProject = create<ProjectState>((set, get) => ({
-  sourceFile: null,
-  mediaUrl: null,
+  sourceFiles: [],
+  mediaSegments: [],
   duration: 0,
   language: "",
   uiLanguage: "auto",
@@ -69,10 +95,14 @@ export const useProject = create<ProjectState>((set, get) => ({
   reportLanguage: null,
   reportPending: false,
 
-  setSource: (file, url) =>
+  setSourceFiles: (files) => set({ sourceFiles: files }),
+  setMediaSegments: (segs) =>
     set((s) => {
-      if (s.mediaUrl && s.mediaUrl !== url) URL.revokeObjectURL(s.mediaUrl);
-      return { sourceFile: file, mediaUrl: url };
+      // Revoke any URLs we're about to replace so memory doesn't leak across
+      // re-uploads in the same session.
+      const incomingUrls = new Set(segs.map((x) => x.url));
+      revokeAll(s.mediaSegments.filter((x) => !incomingUrls.has(x.url)));
+      return { mediaSegments: segs };
     }),
   setDuration: (d) => set({ duration: d }),
   setLanguage: (l) => set({ language: l }),
@@ -111,19 +141,22 @@ export const useProject = create<ProjectState>((set, get) => ({
   setReportPending: (b) => set({ reportPending: b }),
 
   reset: () =>
-    set({
-      sourceFile: null,
-      mediaUrl: null,
-      duration: 0,
-      language: "",
-      uiLanguage: "auto",
-      script: "original",
-      segments: [],
-      segmentsOriginal: [],
-      speakers: [],
-      activeSegmentId: null,
-      report: null,
-      reportLanguage: null,
-      reportPending: false,
+    set((s) => {
+      revokeAll(s.mediaSegments);
+      return {
+        sourceFiles: [],
+        mediaSegments: [],
+        duration: 0,
+        language: "",
+        uiLanguage: "auto",
+        script: "original",
+        segments: [],
+        segmentsOriginal: [],
+        speakers: [],
+        activeSegmentId: null,
+        report: null,
+        reportLanguage: null,
+        reportPending: false,
+      };
     }),
 }));

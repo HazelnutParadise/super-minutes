@@ -20,7 +20,7 @@ function EditorPageInner() {
   const router = useRouter();
   const params = useSearchParams();
   const segments = useProject((s) => s.segments);
-  const sourceFile = useProject((s) => s.sourceFile);
+  const sourceFiles = useProject((s) => s.sourceFiles);
   const setSegments = useProject((s) => s.setSegments);
   const setSegmentsOriginal = useProject((s) => s.setSegmentsOriginal);
   const replaceSpeakers = useProject((s) => s.replaceSpeakers);
@@ -55,13 +55,20 @@ function EditorPageInner() {
   useEffect(() => {
     if (
       segments.length === 0 &&
-      !sourceFile &&
+      sourceFiles.length === 0 &&
       params.get("demo") !== "1"
     ) {
       const t = setTimeout(() => router.replace("/"), 200);
       return () => clearTimeout(t);
     }
-  }, [segments.length, sourceFile, router, params]);
+  }, [segments.length, sourceFiles.length, router, params]);
+
+  const sourceLabel =
+    sourceFiles.length === 0
+      ? "—"
+      : sourceFiles.length === 1
+        ? sourceFiles[0].name
+        : `${sourceFiles[0].name} + ${sourceFiles.length - 1} 個檔案`;
 
   return (
     <main className="relative min-h-screen pb-24">
@@ -90,8 +97,11 @@ function EditorPageInner() {
             <h1 className="mt-1 font-display italic text-[clamp(2rem,4vw,3.25rem)] leading-none text-cream-50">
               編輯室
             </h1>
-            <p className="mt-1 font-mono text-[10px] tracking-[0.25em] text-cream-500">
-              {sourceFile?.name ?? "—"}
+            <p
+              className="mt-1 font-mono text-[10px] tracking-[0.25em] text-cream-500 max-w-[70ch] truncate"
+              title={sourceFiles.map((f) => f.name).join(" · ")}
+            >
+              {sourceLabel}
             </p>
           </div>
           <div className="flex items-center gap-3">
