@@ -14,7 +14,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="zh-Hant" className="dark">
+    // Pistachio's worker mutates both <html> and <body>:
+    //   document.documentElement.style.setProperty('--banner-height', ...)
+    //   document.body.classList.add('has-banner')
+    //   document.body.style.marginTop = ...
+    // Both fire on DOMContentLoaded — before React hydrates — so each
+    // element needs suppressHydrationWarning. Without it on <html>, the
+    // browser's <html style="--banner-height: 0px"> doesn't match the
+    // server-rendered <html> (no style) and React #418 fires.
+    <html lang="zh-Hant" className="dark" suppressHydrationWarning>
       <head>
         {/* Instrument Serif — distinctive editorial display, italic-leaning. */}
         {/* Geist Sans — refined neo-grotesque body. */}
