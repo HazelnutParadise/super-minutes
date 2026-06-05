@@ -55,6 +55,13 @@ export interface GenerateReportOptions {
   model?: string;
   onPing?: () => void;
   onStarted?: (model: string) => void;
+  /** Fired whenever the server reports we're still queued behind other
+   *  generations. `ahead` is the number of jobs that will run before ours.
+   *  When the slot is ours `onProcessing` fires and no further queued
+   *  events arrive. */
+  onQueueStatus?: (status: { ahead: number }) => void;
+  /** Fired exactly once when the BFF acquires the Ollama slot. */
+  onProcessing?: () => void;
 }
 
 export async function generateReport(
@@ -69,6 +76,11 @@ export async function generateReport(
       model: opts.model,
     }),
   });
+  if (r.status === 503) {
+    // Queue at the BFF was full — surface a friendly message rather than
+    // the raw `{error, queue}` JSON.
+    throw new Error("AI 整稿目前忙線中，請稍等一下再試一次。");
+  }
   if (!r.ok) {
     const text = await r.text();
     throw new Error(`Report API failed: ${r.status} ${text}`);
@@ -93,6 +105,7 @@ export async function generateReport(
         status?: number;
         body?: string;
         model?: string;
+        ahead?: number;
       };
       try {
         msg = JSON.parse(line);
@@ -102,6 +115,9 @@ export async function generateReport(
       if (msg.type === "ping") opts.onPing?.();
       else if (msg.type === "started")
         opts.onStarted?.(msg.model ?? "(unknown)");
+      else if (msg.type === "queued")
+        opts.onQueueStatus?.({ ahead: msg.ahead ?? 0 });
+      else if (msg.type === "processing") opts.onProcessing?.();
       else if (msg.type === "result") {
         envelope = { status: msg.status ?? 0, body: msg.body ?? "" };
         break outer;

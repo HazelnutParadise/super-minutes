@@ -6,6 +6,7 @@ import { Readable } from "node:stream";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { Mutex } from "@/lib/server/mutex";
 
 const TMP_PREFIX = "minutes-transcribe-";
 const TMP_SUFFIX = ".bin";
@@ -55,62 +56,8 @@ const GATEWAY =
 
 const MAX_QUEUE_DEPTH = 50;
 
-class Mutex {
-  private locked = false;
-  private waiters: Array<() => void> = [];
-  private completedCount = 0;
-  get pending(): number {
-    return this.waiters.length + (this.locked ? 1 : 0);
-  }
-  get waiting(): number {
-    return this.waiters.length;
-  }
-  get completed(): number {
-    return this.completedCount;
-  }
-  async acquire(signal?: AbortSignal): Promise<() => void> {
-    if (signal?.aborted) {
-      throw signal.reason ?? new Error("aborted before acquire");
-    }
-    if (this.locked) {
-      let myResolver!: () => void;
-      try {
-        await new Promise<void>((resolve, reject) => {
-          myResolver = resolve;
-          this.waiters.push(resolve);
-          if (signal) {
-            const onAbort = () => {
-              const idx = this.waiters.indexOf(myResolver);
-              if (idx !== -1) this.waiters.splice(idx, 1);
-              reject(signal.reason ?? new Error("aborted while queued"));
-            };
-            signal.addEventListener("abort", onAbort, { once: true });
-          }
-        });
-      } catch (e) {
-        if (this.waiters.indexOf(myResolver) === -1) {
-          this.locked = true;
-          this.completedCount++;
-          this.locked = false;
-          const next = this.waiters.shift();
-          if (next) next();
-        }
-        throw e;
-      }
-    }
-    this.locked = true;
-    let released = false;
-    return () => {
-      if (released) return;
-      released = true;
-      this.completedCount++;
-      this.locked = false;
-      const next = this.waiters.shift();
-      if (next) next();
-    };
-  }
-}
-
+/** Single shared lock — the Whisper Gateway runs one transcription at a time
+ *  per box, so everything pending in this BFF process queues here. */
 const gatewayLock = new Mutex();
 
 export async function POST(req: NextRequest) {

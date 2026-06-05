@@ -50,6 +50,11 @@ export function ReportPane() {
   const detectedLanguage = useProject((s) => s.language);
   const reportLanguage = useProject((s) => s.reportLanguage);
   const [outputLang, setOutputLang] = useState<string>("auto");
+  /** Live queue state during generation. ahead=null means we're past queueing
+   *  (or never queued); ahead=0 means we're at the head waiting for the slot;
+   *  ahead>0 is the live "前面還有 N 個". */
+  const [queueAhead, setQueueAhead] = useState<number | null>(null);
+  const [processingActive, setProcessingActive] = useState(false);
 
   // Default output language follows the source.
   useEffect(() => {
@@ -69,6 +74,8 @@ export function ReportPane() {
   async function generate() {
     if (!segments.length) return;
     setReportPending(true);
+    setQueueAhead(null);
+    setProcessingActive(false);
     try {
       const transcript = buildTranscriptForLLM(segments, speakers);
       const lang =
@@ -81,6 +88,14 @@ export function ReportPane() {
       const { report: r, language } = await generateReport({
         transcript,
         languageName: lang,
+        onQueueStatus: ({ ahead }) => {
+          setQueueAhead(ahead);
+          setProcessingActive(false);
+        },
+        onProcessing: () => {
+          setQueueAhead(null);
+          setProcessingActive(true);
+        },
       });
       setReport(r, language);
       toast.success("報告生成完成");
@@ -89,6 +104,8 @@ export function ReportPane() {
       toast.error(msg);
     } finally {
       setReportPending(false);
+      setQueueAhead(null);
+      setProcessingActive(false);
     }
   }
 
@@ -190,6 +207,13 @@ export function ReportPane() {
         </div>
       </div>
 
+      {/* Queued / processing banner — shown above the report when busy
+       *  (replaces the report) or above an existing report (during a
+       *  regenerate). */}
+      {reportPending && (
+        <QueueBanner ahead={queueAhead} processing={processingActive} />
+      )}
+
       {/* The report itself. */}
       {reportPending && !report ? (
         <ReportSkeleton />
@@ -200,6 +224,42 @@ export function ReportPane() {
           按「生成報告」開始。
         </div>
       )}
+    </div>
+  );
+}
+
+function QueueBanner({
+  ahead,
+  processing,
+}: {
+  ahead: number | null;
+  processing: boolean;
+}) {
+  const isQueued = ahead !== null && ahead > 0;
+  const isWaitingForSlot = ahead === 0 && !processing;
+  const label = isQueued
+    ? `排隊中　·　前面還有 ${ahead} 個`
+    : isWaitingForSlot
+      ? "排隊中　·　等待空檔"
+      : "AI 正在撰寫…";
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-3 rounded-sm border bg-ink-800/40 px-4 py-3",
+        isQueued || isWaitingForSlot
+          ? "border-amber-400/40"
+          : "border-vermillion/40"
+      )}
+    >
+      <Loader2
+        className={cn(
+          "h-3.5 w-3.5 animate-spin",
+          isQueued || isWaitingForSlot ? "text-amber-400" : "text-vermillion"
+        )}
+      />
+      <span className="font-mono text-[11px] tracking-[0.18em] text-cream-200">
+        {label}
+      </span>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Mutex } from "@/lib/server/mutex";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -6,6 +7,18 @@ export const maxDuration = 600;
 
 const OLLAMA = process.env.OLLAMA_URL ?? "http://ollama:11434";
 const MODEL = process.env.OLLAMA_MODEL ?? "gemma4:e4b";
+
+/**
+ * Single shared lock — Ollama generates one response per GPU at a time,
+ * and even when it doesn't queue internally it'll thrash VRAM swapping
+ * model state. Serialising at the BFF gives the client a queue-position
+ * signal and bounds Ollama-side memory pressure.
+ *
+ * Depth is lower than transcribe's (50) because each report is ~30-60s and
+ * we'd rather 503 a 21st waiter than make them sit through 10+ minutes.
+ */
+const ollamaLock = new Mutex();
+const MAX_QUEUE_DEPTH = 20;
 
 interface ReportRequest {
   /** Concatenated transcript with speaker tags + timestamps. */
@@ -87,6 +100,7 @@ ${transcript}
 Emit the JSON now.`;
 
 export async function POST(req: NextRequest) {
+  const t0 = Date.now();
   let payload: ReportRequest;
   try {
     payload = await req.json();
@@ -100,20 +114,52 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
+  if (ollamaLock.pending >= MAX_QUEUE_DEPTH) {
+    console.warn(
+      `[report] queue full (${ollamaLock.pending}/${MAX_QUEUE_DEPTH}); rejecting with 503`
+    );
+    return NextResponse.json(
+      { error: "Report queue full, please retry later", queue: ollamaLock.pending },
+      { status: 503, headers: { "retry-after": "30" } }
+    );
+  }
   const languageName =
     payload.languageName?.trim() || "Traditional Chinese (zh-TW)";
   const model = payload.model?.trim() || MODEL;
+
+  let clientDisconnected = false;
+  req.signal.addEventListener("abort", () => {
+    clientDisconnected = true;
+  });
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const encoder = new TextEncoder();
       const emit = (obj: Record<string, unknown>) => {
+        if (clientDisconnected) return;
         try {
           controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
         } catch {}
       };
 
-      const heartbeat = setInterval(() => emit({ type: "ping" }), 5_000);
+      // Snapshot queue state at enqueue. Combined with the live `completed`
+      // counter this lets us compute "how many finished since I joined"
+      // without tracking positions inside Mutex.
+      const initialAhead = ollamaLock.pending;
+      const completedAtEnqueue = ollamaLock.completed;
+      let acquired = false;
+      const computeAhead = () => {
+        if (acquired) return 0;
+        const finished = ollamaLock.completed - completedAtEnqueue;
+        return Math.max(0, initialAhead - finished);
+      };
+
+      const heartbeat = setInterval(() => {
+        if (clientDisconnected) return;
+        if (acquired) emit({ type: "ping", t: Date.now() - t0 });
+        else emit({ type: "queued", t: Date.now() - t0, ahead: computeAhead() });
+      }, 5_000);
+
       const abort = new AbortController();
       req.signal.addEventListener("abort", () => abort.abort());
 
@@ -175,8 +221,41 @@ export async function POST(req: NextRequest) {
         };
       };
 
+      let release: (() => void) | null = null;
       try {
         emit({ type: "started", model });
+        if (initialAhead > 0) {
+          emit({ type: "queued", t: 0, ahead: initialAhead });
+          console.log(
+            `[report] queued behind ${initialAhead} request(s); waiting for Ollama slot`
+          );
+        }
+
+        // Acquire the Ollama slot. If the client disconnects while queued,
+        // Mutex.acquire pulls our resolver out and rejects — no dead slot.
+        try {
+          release = await ollamaLock.acquire(req.signal);
+        } catch (e) {
+          if (clientDisconnected) {
+            console.log("[report] client disconnected while queued");
+            return;
+          }
+          throw e;
+        }
+        if (clientDisconnected) {
+          release();
+          release = null;
+          return;
+        }
+
+        acquired = true;
+        const waitedMs = Date.now() - t0;
+        emit({ type: "processing", t: waitedMs });
+        if (initialAhead > 0) {
+          console.log(
+            `[report] acquired Ollama slot after ${waitedMs}ms in queue`
+          );
+        }
 
         let attempt: {
           ok: boolean;
@@ -242,13 +321,17 @@ export async function POST(req: NextRequest) {
         });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        emit({
-          type: "result",
-          status: 502,
-          body: JSON.stringify({ error: msg }),
-        });
+        if (!clientDisconnected) {
+          console.error("[report] upstream error:", msg);
+          emit({
+            type: "result",
+            status: 502,
+            body: JSON.stringify({ error: msg }),
+          });
+        }
       } finally {
         clearInterval(heartbeat);
+        if (release) release();
         try {
           controller.close();
         } catch {}
