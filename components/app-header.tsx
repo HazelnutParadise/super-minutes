@@ -40,7 +40,7 @@ export function AppHeader() {
           </div>
         </div>
 
-        <div className="relative flex items-center justify-between pt-6 pb-3">
+        <div className="relative flex items-center pt-6 pb-3">
           <Link href="/" className="group flex items-end gap-4">
             <span className="wax-stamp inline-flex h-12 w-12 items-center justify-center rounded-full font-display italic text-2xl leading-none">
               M
@@ -54,23 +54,6 @@ export function AppHeader() {
               </span>
             </span>
           </Link>
-
-          <nav className="hidden md:flex items-center gap-6 font-mono text-[10px] tracking-[0.3em] text-cream-500">
-            <a
-              href="https://github.com/HazelnutParadise/super-captions"
-              target="_blank"
-              rel="noreferrer"
-              className="hover:text-cream-200 transition-colors"
-            >
-              SIBLING · CAPTIONS ↗
-            </a>
-            <Link
-              href="/editor"
-              className="hover:text-cream-200 transition-colors"
-            >
-              EDITOR
-            </Link>
-          </nav>
         </div>
       </div>
     </header>
