@@ -30,34 +30,38 @@ export default function Home() {
             </span>
           </div>
 
-          {/* The headline — Instrument Serif italic for Roman, Noto Serif TC
-           *  for Han glyphs (via font-han fallback in the body). Enormous,
-           *  but breaks predictably on narrow viewports. */}
+          {/* The headline — Instrument Serif italic display, three-line
+           *  italic statement. Reads as one sentence:
+           *  「把會議錄音 / 變成 / 一份完整的會議紀錄。」 */}
           <h1
             className="font-display italic text-balance text-[clamp(2.75rem,6.5vw,6rem)] leading-[0.92] tracking-[-0.01em] text-cream-50 animate-ledger-rise"
             style={{ animationDelay: "120ms" }}
           >
             <span className="block">把會議錄音</span>
-            <span className="relative inline-block">
-              變成
-              <span className="text-vermillion">一份</span>
-              <svg
-                aria-hidden
-                className="absolute -bottom-1 left-0 w-full text-vermillion/60"
-                height="10"
-                viewBox="0 0 320 10"
-                preserveAspectRatio="none"
-              >
-                <path
-                  d="M2 6 C 80 1, 160 8, 318 4"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                />
-              </svg>
+            <span className="block text-cream-200">
+              變成{" "}
+              <span className="relative inline-block">
+                <span className="text-vermillion">一份</span>
+                <svg
+                  aria-hidden
+                  className="absolute -bottom-1 left-0 w-full text-vermillion/60"
+                  height="10"
+                  viewBox="0 0 320 10"
+                  preserveAspectRatio="none"
+                >
+                  <path
+                    d="M2 6 C 80 1, 160 8, 318 4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </span>
             </span>
-            <span className="block text-cream-200">寫得完的紀錄<span className="text-vermillion">。</span></span>
+            <span className="block">
+              完整的會議紀錄<span className="text-vermillion">。</span>
+            </span>
           </h1>
 
           <p
