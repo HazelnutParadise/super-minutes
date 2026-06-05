@@ -294,8 +294,10 @@ export function UploadCard() {
           )}
         </div>
 
-        {/* Controls */}
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        {/* Controls — always stacked: the card is narrow when the hero
+         *  splits into two columns, so a horizontal split squeezes both
+         *  fields. Vertical stacking reads cleaner at every width. */}
+        <div className="grid grid-cols-1 gap-4">
           <div className="space-y-2">
             <Label className="flex items-center gap-2">
               <Languages className="h-3 w-3" /> 來源語言
@@ -318,9 +320,9 @@ export function UploadCard() {
             <Label className="flex items-center gap-2">
               <Users className="h-3 w-3" /> 語者分離
             </Label>
-            <div className="flex h-9 items-center justify-between rounded-sm border border-cream-100/20 bg-ink-800/40 px-3">
-              <span className="font-sans text-sm text-cream-200">
-                {diarize ? "自動切分多位講者" : "全部視為單一講者"}
+            <div className="flex h-9 items-center justify-between gap-3 rounded-sm border border-cream-100/20 bg-ink-800/40 px-3">
+              <span className="min-w-0 truncate font-sans text-sm text-cream-200">
+                {diarize ? "多人自動分離" : "視為單一講者"}
               </span>
               <Switch checked={diarize} onCheckedChange={setDiarize} />
             </div>
@@ -368,13 +370,13 @@ export function UploadCard() {
 
         {/* Footer / start */}
         <div className="flex flex-col-reverse items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="font-mono text-[10px] leading-relaxed tracking-[0.22em] text-cream-500 max-w-[26ch]">
+          <div className="font-mono text-[10px] leading-relaxed tracking-[0.18em] text-cream-500 max-w-[20ch]">
             {file ? (
               <>
                 預估處理 ≈ {formatShort((file.size / 1024 / 1024) * 0.6)}
               </>
             ) : (
-              <>影片不上傳　·　只送出音訊</>
+              <>只上傳音訊　影片不外流</>
             )}
           </div>
           <Button
