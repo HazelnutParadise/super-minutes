@@ -64,15 +64,14 @@ export default function Home() {
             className="max-w-[52ch] text-pretty text-[15px] leading-relaxed text-cream-300 animate-ledger-rise"
             style={{ animationDelay: "240ms" }}
           >
-            上傳音訊或影片，瀏覽器先就地分離音軌；Whisper Gateway
-            做<span className="underline-vermillion">語者分離與時間對齊</span>；
-            <span className="font-mono text-cream-100">gemma4:e4b</span>
-            把逐字稿改寫成有
+            上傳會議的音訊或影片，自動產出有
+            <span className="underline-vermillion">講者分離與時間對齊</span>
+            的逐字稿，再整理成有
             <em className="font-display not-italic text-cream-100">會議紀要</em>、
             <em className="font-display not-italic text-cream-100">主要結論</em>、
             <em className="font-display not-italic text-cream-100">議題要點</em>、
             <em className="font-display not-italic text-cream-100">待辦行動項</em>
-            的結構化報告。多語言通吃，繁體 / 簡體可在前端互轉。
+            的會議報告。多語言通吃，繁體 / 簡體一鍵互轉。
           </p>
 
           <div
@@ -88,15 +87,16 @@ export default function Home() {
             </Link>
           </div>
 
-          {/* Spec strip — typeset like a colophon. */}
+          {/* Spec strip — typeset like a colophon. Values phrased as
+           *  user-visible properties, not implementation choices. */}
           <div
             className="grid grid-cols-2 gap-x-6 gap-y-5 border-t border-cream-100/15 pt-6 sm:grid-cols-4 animate-ledger-rise"
             style={{ animationDelay: "360ms" }}
           >
-            <Spec label="ASR" value="Whisper" detail="OpenAI-compatible" />
-            <Spec label="LLM" value="gemma4:e4b" detail="via Ollama" />
-            <Spec label="DIARIZE" value="Auto" detail="pyannote" />
-            <Spec label="EXPORT" value="DOCX·PDF·MD" detail="in-browser" />
+            <Spec label="INPUT" value="音訊 · 影片" detail="拖曳上傳" />
+            <Spec label="LANGUAGES" value="10+" detail="繁簡互轉" />
+            <Spec label="SPEAKERS" value="自動分離" detail="可改名稱" />
+            <Spec label="EXPORT" value="DOCX · PDF · MD" detail="一鍵下載" />
           </div>
         </div>
 
@@ -124,19 +124,19 @@ export default function Home() {
           />
           <Step
             n="02"
-            title="語者分離"
-            body="Whisper Gateway 同時做轉錄與語者分離，回傳每段話的時間軸與講者標籤。"
+            title="自動分離講者"
+            body="多人對話自動切分成不同講者，每段話標上時間軸與發言人，方便回頭核對。"
           />
           <Step
             n="03"
-            title="LLM 整稿"
-            body="Ollama 端的 gemma4:e4b 收到指定語言的指令，把逐字稿濃縮為四段結構化報告。"
+            title="智能整稿"
+            body="把逐字稿濃縮成 會議紀要、主要結論、議題要點、待辦行動項 四段結構化報告，輸出語言可自選。"
           />
           <Step
             n="04"
             title="校對與匯出"
             value
-            body="編輯器內直接改字、改名、調講者；輸出 Markdown / DOCX / PDF 三種格式。"
+            body="編輯器內直接改字、改名、調講者，完成後一鍵匯出 DOCX、PDF 或 Markdown。"
           />
         </div>
       </section>
@@ -147,7 +147,7 @@ export default function Home() {
           <Feature
             icon={<ShieldCheck className="h-4 w-4" />}
             title="影片不外流"
-            body="ffmpeg.wasm 在瀏覽器抽音軌，伺服器只看到音訊，影片留在你的裝置上。"
+            body="影片只會在你的瀏覽器內處理，原檔不會被上傳；只有抽出來的音訊會送到伺服器。"
           />
           <Feature
             icon={<Users className="h-4 w-4" />}
@@ -162,12 +162,12 @@ export default function Home() {
           <Feature
             icon={<Languages className="h-4 w-4" />}
             title="多語通吃"
-            body="繁體、簡體、英、日、韓、西、法、德、俄都接得住。zh-Hant ↔ zh-Hans 在前端用 OpenCC 互轉。"
+            body="繁體、簡體、英、日、韓、西、法、德、俄都接得住，繁體與簡體可一鍵互轉。"
           />
           <Feature
             icon={<Wand2 className="h-4 w-4" />}
-            title="LLM 整稿"
-            body="逐字稿交給 gemma4:e4b 改寫成可直接送出的會議報告，輸出語言可自選。"
+            title="智能整稿"
+            body="把逐字稿改寫成可直接送出的會議報告，輸出語言可自選。"
           />
           <Feature
             icon={<Download className="h-4 w-4" />}
@@ -184,7 +184,7 @@ export default function Home() {
             END OF FRONT MATTER
           </span>
           <p className="font-display italic text-2xl text-cream-200">
-            Drafted by Whisper. Edited by Gemma. Signed by{" "}
+            Transcribed. Drafted. Signed by{" "}
             <span className="text-vermillion">you</span>.
           </p>
           <p className="font-mono text-[10px] tracking-[0.25em] text-cream-500">

@@ -36,7 +36,7 @@ export function AppHeader() {
             {dateline || "VOL. I"}
           </div>
           <div className="font-mono text-[10px] tracking-[0.3em] text-cream-500 hidden sm:block">
-            BROWSER AUDIO · WHISPER · GEMMA
+            自動逐字稿 · 講者分離 · 智能整稿
           </div>
         </div>
 

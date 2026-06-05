@@ -223,7 +223,7 @@ function ReportSkeleton() {
         ))}
       </div>
       <div className="ornament font-mono text-[10px] tracking-[0.3em] text-vermillion">
-        DRAFTING WITH GEMMA
+        DRAFTING
       </div>
     </div>
   );

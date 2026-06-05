@@ -40,11 +40,11 @@ type Stage =
 
 const STAGE_LABEL: Record<Stage, string> = {
   idle: "WAITING FOR FILE",
-  "loading-ffmpeg": "LOADING FFMPEG.WASM",
-  extracting: "EXTRACTING AUDIO IN BROWSER",
+  "loading-ffmpeg": "PREPARING AUDIO ENGINE",
+  extracting: "EXTRACTING AUDIO",
   queued: "QUEUED",
   retrying: "RETRYING",
-  transcribing: "TRANSCRIBING · WHISPER GATEWAY",
+  transcribing: "TRANSCRIBING",
   done: "COMPLETE",
 };
 
@@ -371,10 +371,10 @@ export function UploadCard() {
           <div className="font-mono text-[10px] leading-relaxed tracking-[0.22em] text-cream-500 max-w-[26ch]">
             {file ? (
               <>
-                EST. PROCESS ≈ {formatShort((file.size / 1024 / 1024) * 0.6)}
+                預估處理 ≈ {formatShort((file.size / 1024 / 1024) * 0.6)}
               </>
             ) : (
-              <>ON-DEVICE EXCEPT AUDIO</>
+              <>影片不上傳　·　只送出音訊</>
             )}
           </div>
           <Button
