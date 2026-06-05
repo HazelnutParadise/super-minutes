@@ -52,14 +52,24 @@ export default function RootLayout({
         {/*
          * Pistachio anchor — the global announcement Worker
          * (HazelnutParadise/Pistachio-Global-Announcement-System) looks for
-         * this id and injects the banner inside it. Anchoring it here
-         * (instead of letting the Worker insert at the top of <body>) keeps
-         * React's hydration tree stable: the Worker mutates children only,
-         * and `suppressHydrationWarning` tells React not to reconcile them.
-         * Without this you get React #418 because the Worker's injected
-         * banner becomes an unexpected first child of <body>.
+         * this id and injects the banner inside it.
+         *
+         * Rendered via dangerouslySetInnerHTML so the inner #Pistachio-
+         * Announcement div is opaque to React's reconciler entirely — not
+         * just suppressed. With a plain JSX div + suppressHydrationWarning
+         * React 19 still tripped #418 (the Worker also rewrites <html>'s
+         * --banner-height custom property and the IIFE that injects fault
+         * banners runs even before the queued DOMContentLoaded handler).
+         *
+         * The wrapper itself is identical on server and client, so React
+         * never touches it; Pistachio gets a stable id to inject into.
          */}
-        <div id="Pistachio-Announcement" suppressHydrationWarning />
+        <div
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{
+            __html: '<div id="Pistachio-Announcement"></div>',
+          }}
+        />
 
         {/* Vellum grain over the whole document — gives the background depth. */}
         <div className="vellum pointer-events-none fixed inset-0 -z-10 opacity-[0.07]" />
