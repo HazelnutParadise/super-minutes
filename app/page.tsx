@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AppHeader } from "@/components/app-header";
 import { UploadCard } from "@/components/upload-card";
+import { HazelnutNavbar } from "@/components/hazelnut-navbar";
 import {
   ShieldCheck,
   Wand2,
@@ -196,6 +197,8 @@ export default function Home() {
           </p>
         </div>
       </footer>
+
+      <HazelnutNavbar />
     </main>
   );
 }
