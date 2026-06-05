@@ -3,7 +3,7 @@ import { Toaster } from "sonner";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Super Minutes · 會議錄音轉結構化會議報告",
+  title: "Super Minutes · 會議錄音轉結構化會議報告 - 榛果繽紛樂",
   description:
     "把會議音訊或影片自動轉成有講者分離、時間對齊的逐字稿，再整理成包含會議紀要、主要結論、議題要點、待辦行動項的會議報告。可匯出 DOCX / PDF / Markdown，繁體簡體一鍵互轉。",
 };
