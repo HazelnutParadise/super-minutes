@@ -357,16 +357,27 @@ export function UploadCard() {
         {/* Drop zone */}
         <div
           onDragOver={(e) => {
+            if (busy) return;
             e.preventDefault();
             setHovered(true);
           }}
           onDragLeave={() => setHovered(false)}
-          onDrop={onDrop}
-          onClick={onPickClick}
+          onDrop={(e) => {
+            if (busy) {
+              e.preventDefault();
+              return;
+            }
+            onDrop(e);
+          }}
+          onClick={busy ? undefined : onPickClick}
+          aria-disabled={busy}
           className={cn(
-            "group relative flex cursor-pointer flex-col items-center justify-center rounded-sm border border-dashed border-cream-100/25 bg-ink-800/40 px-6 text-center transition-all",
+            "group relative flex flex-col items-center justify-center rounded-sm border border-dashed border-cream-100/25 bg-ink-800/40 px-6 text-center transition-all",
             empty ? "py-12" : "py-6",
-            hovered &&
+            busy
+              ? "cursor-not-allowed opacity-50"
+              : "cursor-pointer",
+            !busy && hovered &&
               "border-vermillion/70 bg-vermillion/[0.04] shadow-inner",
             !empty && "border-cream-100/35 bg-ink-800/60"
           )}
@@ -376,6 +387,7 @@ export function UploadCard() {
             type="file"
             accept="audio/*,video/*"
             multiple
+            disabled={busy}
             className="hidden"
             onChange={onPickChange}
           />
@@ -491,7 +503,11 @@ export function UploadCard() {
             <Label className="flex items-center gap-2">
               <Languages className="h-3 w-3" /> 來源語言
             </Label>
-            <Select value={uiLanguage} onValueChange={setUILanguage}>
+            <Select
+              value={uiLanguage}
+              onValueChange={setUILanguage}
+              disabled={busy}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -513,7 +529,11 @@ export function UploadCard() {
               <span className="min-w-0 truncate font-sans text-sm text-cream-200">
                 {diarize ? "多人自動分離" : "視為單一講者"}
               </span>
-              <Switch checked={diarize} onCheckedChange={setDiarize} />
+              <Switch
+                checked={diarize}
+                onCheckedChange={setDiarize}
+                disabled={busy}
+              />
             </div>
           </div>
         </div>
