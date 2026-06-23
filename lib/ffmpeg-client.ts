@@ -49,11 +49,15 @@ export async function extractAudio(
   onProgress?: (ratio: number) => void
 ): Promise<File> {
   const ffmpeg = await getFFmpeg();
-  if (onProgress) {
-    ffmpeg.on("progress", ({ progress }) =>
-      onProgress(Math.max(0, Math.min(1, progress)))
-    );
-  }
+  // The ffmpeg instance is a singleton, so we MUST remove this listener in the
+  // finally block — otherwise every extractAudio call accumulates another one
+  // and later files end up with multiple stale handlers firing setProgress on
+  // a closure from a previous file.
+  const progressHandler = onProgress
+    ? ({ progress }: { progress: number }) =>
+        onProgress(Math.max(0, Math.min(1, progress)))
+    : null;
+  if (progressHandler) ffmpeg.on("progress", progressHandler);
 
   const ext = pickExtension(videoFile);
   const mountPoint = "/mnt";
@@ -118,6 +122,11 @@ export async function extractAudio(
     ) as ArrayBuffer;
     return new File([arrayBuffer], "audio.mp3", { type: "audio/mpeg" });
   } finally {
+    if (progressHandler) {
+      try {
+        ffmpeg.off("progress", progressHandler);
+      } catch {}
+    }
     try {
       await ffmpeg.deleteFile(outputName);
     } catch {}

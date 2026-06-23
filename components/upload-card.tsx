@@ -102,16 +102,32 @@ export function UploadCard() {
         const el = document.createElement(isAudio ? "audio" : "video");
         el.preload = "metadata";
         const url = URL.createObjectURL(f);
+        let settled = false;
+        // Some containers (notably mkv and some webm/mov variants) cause the
+        // <video>/<audio> element to fire neither loadedmetadata nor error in
+        // some browsers — that would hang the upload pipeline forever.
+        // 10s is generous for metadata; on timeout we fall back to duration 0
+        // (the file still gets transcribed; only the multi-file offset stitch
+        // becomes inexact for an un-probed file).
+        const finish = (duration: number) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          el.onloadedmetadata = null;
+          el.onerror = null;
+          URL.revokeObjectURL(url);
+          el.removeAttribute("src");
+          resolve({ duration });
+        };
+        const timer = setTimeout(() => {
+          console.warn(
+            `[upload-card] probeMeta timed out for ${f.name}; falling back to duration 0`
+          );
+          finish(0);
+        }, 10_000);
+        el.onloadedmetadata = () => finish(el.duration || 0);
+        el.onerror = () => finish(0);
         el.src = url;
-        el.onloadedmetadata = () => {
-          const meta = { duration: el.duration || 0 };
-          URL.revokeObjectURL(url);
-          resolve(meta);
-        };
-        el.onerror = () => {
-          URL.revokeObjectURL(url);
-          resolve({ duration: 0 });
-        };
       }),
     []
   );
