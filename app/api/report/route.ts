@@ -3,7 +3,6 @@ import { Mutex } from "@/lib/server/mutex";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 600;
 
 const OLLAMA = process.env.OLLAMA_URL ?? "http://ollama:11434";
 const MODEL = process.env.OLLAMA_MODEL ?? "gemma4:e4b";
