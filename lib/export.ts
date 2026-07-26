@@ -33,8 +33,17 @@ export function reportToMarkdown(
     for (const t of report.topics) {
       out.push(`### ${t.heading}`);
       out.push("");
-      for (const p of t.points) out.push(`- ${p}`);
-      out.push("");
+      if (t.subtopics?.length) {
+        for (const st of t.subtopics) {
+          out.push(`#### ${st.heading}`);
+          out.push("");
+          for (const p of st.points) out.push(`- ${p}`);
+          out.push("");
+        }
+      } else {
+        for (const p of t.points) out.push(`- ${p}`);
+        out.push("");
+      }
     }
   }
   if (report.openQuestions.length) {
@@ -147,7 +156,16 @@ export async function exportDocx(
     body.push(p([{ text: "議題與要點", bold: true }], { heading: "HEADING_2" }));
     for (const t of report.topics) {
       body.push(p([{ text: t.heading, bold: true }], { heading: "HEADING_3" }));
-      for (const pt of t.points) body.push(bullet(pt));
+      if (t.subtopics?.length) {
+        for (const st of t.subtopics) {
+          body.push(
+            p([{ text: st.heading, bold: true }], { heading: "HEADING_4" })
+          );
+          for (const pt of st.points) body.push(bullet(pt));
+        }
+      } else {
+        for (const pt of t.points) body.push(bullet(pt));
+      }
     }
   }
   if (report.openQuestions.length) {
@@ -261,13 +279,23 @@ function pdfHtml(
     .map((c) => `<li>${esc(c)}</li>`)
     .join("");
   const topics = report.topics
-    .map(
-      (t) => `
+    .map((t) => {
+      const body = t.subtopics?.length
+        ? t.subtopics
+            .map(
+              (st) =>
+                `<h4>${esc(st.heading)}</h4><ul>${st.points
+                  .map((p) => `<li>${esc(p)}</li>`)
+                  .join("")}</ul>`
+            )
+            .join("")
+        : `<ul>${t.points.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>`;
+      return `
         <section class="topic">
           <h3>${esc(t.heading)}</h3>
-          <ul>${t.points.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>
-        </section>`
-    )
+          ${body}
+        </section>`;
+    })
     .join("");
   const openQuestions = report.openQuestions
     .map((q) => `<li>${esc(q)}</li>`)
@@ -316,7 +344,7 @@ function pdfHtml(
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-  h1, h2, h3 {
+  h1, h2, h3, h4 {
     font-family: "Instrument Serif","Noto Serif TC", Georgia, serif;
     font-style: italic;
     font-weight: 500;
@@ -326,6 +354,7 @@ function pdfHtml(
   h2 { font-size: 20pt; margin: 18pt 0 6pt; border-bottom: 1px solid var(--rule); padding-bottom: 4pt; }
   h2::before { content: ""; display: inline-block; width: 14pt; height: 6pt; background: var(--vermillion); margin-right: 8pt; vertical-align: middle; }
   h3 { font-size: 14pt; margin: 12pt 0 4pt; }
+  h4 { font-size: 11.5pt; margin: 8pt 0 2pt; color: #4a4640; }
   .masthead { display: flex; justify-content: space-between; align-items: end; border-bottom: 2px solid var(--ink); padding-bottom: 8pt; margin-bottom: 12pt; }
   .lab { font-family: ui-monospace, "JetBrains Mono", monospace; font-size: 8pt; letter-spacing: 0.3em; }
   .sub { font-family: ui-monospace, monospace; font-size: 9pt; letter-spacing: 0.18em; color: #6F664F; margin-top: 4pt; }

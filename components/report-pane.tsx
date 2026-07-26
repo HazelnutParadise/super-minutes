@@ -395,17 +395,66 @@ function ReportBody() {
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
               </div>
-              <div className="mt-3">
-                <EditableList
-                  items={topic.points}
-                  onChange={(pts) => {
-                    const next = report.topics.slice();
-                    next[ti] = { ...topic, points: pts };
-                    update({ topics: next });
-                  }}
-                  placeholder="新增要點…"
-                />
-              </div>
+              {topic.subtopics?.length ? (
+                /* Long meetings split rich topics into subtopics; each keeps
+                   its own editable heading + list. */
+                <div className="mt-3 space-y-4">
+                  {topic.subtopics.map((st, si) => (
+                    <div key={si} className="border-l-2 border-cream-100/10 pl-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <Input
+                          value={st.heading}
+                          onChange={(e) => {
+                            const subs = topic.subtopics!.slice();
+                            subs[si] = { ...st, heading: e.target.value };
+                            const next = report.topics.slice();
+                            next[ti] = { ...topic, subtopics: subs };
+                            update({ topics: next });
+                          }}
+                          className="h-auto !text-base font-display italic !text-cream-200 border-none bg-transparent p-0 focus-visible:!border-none focus-visible:ring-0"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={() => {
+                            const subs = topic.subtopics!.slice();
+                            subs.splice(si, 1);
+                            const next = report.topics.slice();
+                            next[ti] = { ...topic, subtopics: subs };
+                            update({ topics: next });
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      <EditableList
+                        items={st.points}
+                        onChange={(pts) => {
+                          const subs = topic.subtopics!.slice();
+                          subs[si] = { ...st, points: pts };
+                          const next = report.topics.slice();
+                          next[ti] = { ...topic, subtopics: subs };
+                          update({ topics: next });
+                        }}
+                        placeholder="新增要點…"
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-3">
+                  <EditableList
+                    items={topic.points}
+                    onChange={(pts) => {
+                      const next = report.topics.slice();
+                      next[ti] = { ...topic, points: pts };
+                      update({ topics: next });
+                    }}
+                    placeholder="新增要點…"
+                  />
+                </div>
+              )}
             </div>
           ))}
           <Button

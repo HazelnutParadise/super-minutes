@@ -61,7 +61,14 @@ export interface MinutesReport {
   title: string;
   summary: string;
   conclusions: string[];
-  topics: { heading: string; points: string[] }[];
+  /** `subtopics` is present when the multi-pass pipeline split an oversized
+   *  topic; short meetings (single-pass) always produce flat `points`. A topic
+   *  has either points or subtopics, not both. */
+  topics: {
+    heading: string;
+    points: string[];
+    subtopics?: { heading: string; points: string[] }[];
+  }[];
   /** Things the meeting explicitly left undecided or parked pending data.
    *  Kept separate from `actions` because nobody owns them yet — they're the
    *  items that quietly vanish when minutes only record what was settled. */

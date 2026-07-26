@@ -176,6 +176,14 @@ export async function generateReport(
   report.topics = report.topics.map((t) => ({
     heading: t?.heading ?? "",
     points: Array.isArray(t?.points) ? t.points : [],
+    subtopics: Array.isArray(t?.subtopics)
+      ? t.subtopics
+          .filter((st) => st && typeof st.heading === "string")
+          .map((st) => ({
+            heading: st.heading,
+            points: Array.isArray(st.points) ? st.points : [],
+          }))
+      : undefined,
   }));
 
   return { report, language: parsed.language ?? opts.languageName };
