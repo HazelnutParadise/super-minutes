@@ -37,6 +37,12 @@ export function reportToMarkdown(
       out.push("");
     }
   }
+  if (report.openQuestions.length) {
+    out.push("## 待決事項");
+    out.push("");
+    for (const q of report.openQuestions) out.push(`- ${q}`);
+    out.push("");
+  }
   if (report.actions.length) {
     out.push("## 待辦行動項");
     out.push("");
@@ -143,6 +149,10 @@ export async function exportDocx(
       body.push(p([{ text: t.heading, bold: true }], { heading: "HEADING_3" }));
       for (const pt of t.points) body.push(bullet(pt));
     }
+  }
+  if (report.openQuestions.length) {
+    body.push(p([{ text: "待決事項", bold: true }], { heading: "HEADING_2" }));
+    for (const q of report.openQuestions) body.push(bullet(q));
   }
   if (report.actions.length) {
     body.push(p([{ text: "待辦行動項", bold: true }], { heading: "HEADING_2" }));
@@ -259,6 +269,9 @@ function pdfHtml(
         </section>`
     )
     .join("");
+  const openQuestions = report.openQuestions
+    .map((q) => `<li>${esc(q)}</li>`)
+    .join("");
   const actions = report.actions
     .map((a) => {
       const owner = a.owner ? ` · 負責：${esc(a.owner)}` : "";
@@ -341,6 +354,7 @@ function pdfHtml(
   ${report.summary ? `<h2>會議紀要</h2><p class="summary">${esc(report.summary)}</p>` : ""}
   ${conclusions ? `<h2>主要結論</h2><ul>${conclusions}</ul>` : ""}
   ${topics ? `<h2>議題與要點</h2>${topics}` : ""}
+  ${openQuestions ? `<h2>待決事項</h2><ul>${openQuestions}</ul>` : ""}
   ${actions ? `<h2>待辦行動項</h2><ul>${actions}</ul>` : ""}
 
   <h2>逐字稿</h2>

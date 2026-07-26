@@ -115,6 +115,9 @@ export const DEMO_REPORT: MinutesReport = {
       ],
     },
   ],
+  openQuestions: [
+    "離線快取要不要進下週三的客戶 demo，取決於 PR 能否在期限前合併，demo 前一日走查時才會確認。",
+  ],
   actions: [
     {
       task: "提交離線快取 v1 PR（service worker + 兩條路由策略）",

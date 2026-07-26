@@ -408,8 +408,23 @@ function ReportBody() {
         </div>
       </Section>
 
+      {/* Open questions — what the meeting left hanging. Rendered even when
+          empty is wrong (it reads as "nothing pending"), so it's conditional. */}
+      {report.openQuestions.length > 0 && (
+        <Section ordinal="IV" title="待決事項">
+          <EditableList
+            items={report.openQuestions}
+            onChange={(next) => update({ openQuestions: next })}
+            placeholder="新增待決事項…"
+          />
+        </Section>
+      )}
+
       {/* Actions. */}
-      <Section ordinal="IV" title="待辦行動項">
+      <Section
+        ordinal={report.openQuestions.length > 0 ? "V" : "IV"}
+        title="待辦行動項"
+      >
         <div className="space-y-2">
           {report.actions.map((a, i) => (
             <ActionRow

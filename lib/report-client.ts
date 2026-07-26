@@ -137,7 +137,11 @@ export async function generateReport(
   }
 
   const parsed = JSON.parse(envelope.body);
-  const report = parsed.report as MinutesReport;
+  const report = parsed.report as MinutesReport & {
+    /** The prompt asks for snake_case, which is the JSON convention and what
+     *  the model was tested against. Normalised to camelCase here. */
+    open_questions?: unknown;
+  };
   if (
     !report ||
     typeof report.summary !== "string" ||
@@ -150,6 +154,12 @@ export async function generateReport(
   report.conclusions = Array.isArray(report.conclusions)
     ? report.conclusions
     : [];
+  report.openQuestions = Array.isArray(report.open_questions)
+    ? (report.open_questions as string[])
+    : Array.isArray(report.openQuestions)
+      ? report.openQuestions
+      : [];
+  delete report.open_questions;
   report.actions = Array.isArray(report.actions) ? report.actions : [];
   report.topics = report.topics.map((t) => ({
     heading: t?.heading ?? "",

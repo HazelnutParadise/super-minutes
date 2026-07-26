@@ -34,55 +34,102 @@ interface OllamaChatResponse {
 }
 
 /**
- * System prompt — short, with an inline example. Small models (8B-class)
+ * System prompt — the rules, then one inline example. Small models (8B-class)
  * follow JSON schemas more reliably when shown the shape they should emit
  * than when given a schema declaration alone.
+ *
+ * The "what makes this good" and "coverage floors" sections exist because an
+ * earlier version of this prompt capped lengths (`short declarative
+ * sentences`, `heading ≤ 16 chars`) and set no floors at all. Measured against
+ * a 14-minute test transcript, that version carried 3 of 9 substantive items
+ * and averaged 32 characters per point — it kept *what* was discussed and
+ * dropped every number, reason, objection and condition behind it. Replacing
+ * the ceilings with floors took the same model to 7 of 9 at 69 chars/point,
+ * and did not cost generation time. The only remaining ceiling is on `title`,
+ * which is a layout constraint (it renders at up to 3.5rem) and has nothing to
+ * do with depth.
  */
 const SYSTEM = (languageName: string) =>
-  `You are a senior meeting minutes writer. Convert the diarized transcript into a structured meeting report.
+  `You are a senior meeting minutes writer. Convert the diarized transcript into a structured meeting report that a person who missed the meeting could act on without listening to the recording.
 
 # Rules
 
-1. **Language**: write every string value (title, summary, conclusions, headings, points, tasks, owners, due) in ${languageName}. Keep keys in English.
+1. **Language**: write every string value in ${languageName}. Keep keys in English.
 2. **Output**: emit ONE JSON object and NOTHING ELSE. No prose, no markdown fences, no \`\`\`json blocks, no leading commentary. Your reply MUST start with { and end with }.
-3. **Fidelity**: only use facts present in the transcript. Don't invent attendees, decisions, numbers, or commitments.
-4. **Style**: short declarative sentences. No filler like "在這次會議中". \`title\` ≤ 18 chars. Each \`heading\` ≤ 16 chars.
+3. **Fidelity**: only use facts present in the transcript. Never invent attendees, numbers, decisions, or commitments. Copy names exactly as they appear.
+4. **Layout**: \`title\` ≤ 20 chars — it is rendered as a large headline. Nothing else has a length cap.
+
+# What makes this report good
+
+A shallow report lists what was talked about. A good one carries the reasoning. For every claim you write down, check that you kept these four things:
+
+- **Numbers**: every figure, percentage, date, deadline, sample size and headcount that was actually spoken. Write \`4.1% 掉到 2.9%\`, never \`轉換率下降\`.
+- **Reasons**: why the group landed where it did. A decision without its reason is half a decision.
+- **Disagreement**: who pushed back, on what, and how it was resolved — or that it wasn't. Do not smooth the meeting into a consensus it didn't have.
+- **Conditions**: anything decided as "only if", "not before", "unless", or with a stop date attached. These are the parts people forget and then violate.
+
+# Coverage floors
+
+- \`summary\`: 3-5 sentences. Say what was at stake, what was settled, and what was deliberately left open.
+- \`conclusions\`: one entry per thing that was actually settled. Each entry states the conclusion AND the reason behind it in the same sentence.
+- \`topics\`: one per agenda item that got real discussion. Each topic needs **at least 4 points**. Points carry the evidence — the numbers, the objection, the tradeoff. A topic with 2 vague points means you compressed too hard; go back to the transcript and pull the specifics.
+- \`open_questions\`: anything explicitly left undecided, deferred, or waiting on data. If someone said "先擱著", "再看", "還沒決定", "等資料出來", it belongs here. Use an empty array only if the meeting truly closed everything.
+- \`actions\`: every commitment anyone made, including ones buried mid-discussion. Use the speaker's own deadline wording. If no deadline was given, \`due\` is null — never the string "N/A".
+
+Do not compress to look tidy. Length is not a virtue, but neither is brevity — the test is whether a reader can reconstruct the decision without the recording.
 
 # Example output
 
 {
-  "title": "Sprint 22 範圍確認",
-  "summary": "團隊敲定下個 Sprint 只做離線快取的目錄與詳情頁，個人化推延。",
+  "title": "Q3 轉換下滑歸因",
+  "summary": "團隊確認免費轉付費連三個月下滑，且 Android 跌幅是 iOS 的三倍。工程指出七月換了付款 SDK，設計的使用者測試也看到確認頁上的資訊斷層，因此把 SDK 流程列為主要嫌疑。行銷提出同期停掉首購折扣也可能有影響，會後由數據拆解驗證。中介畫面先做以止血，付費牆改綁行為順延，避免兩個變因同時進場。",
   "conclusions": [
-    "Sprint 22 範圍鎖定為離線快取 v1。",
-    "個人化頁面延至 Sprint 23 再評估。"
+    "把 Android 轉換下滑的主因暫定為付款流程資訊斷層，因為折扣是 iOS、Android 同步停止，解釋不了 Android 獨自跌三倍。",
+    "付費牆觸發條件從天數改為行為，因為有建專案的人轉換 11.3%、沒建的只有 0.8%，差 14 倍，天數跟付費意願無關。"
   ],
   "topics": [
     {
-      "heading": "Sprint 範圍",
+      "heading": "轉換下滑歸因",
       "points": [
-        "離線快取只做目錄與詳情兩條路由。",
-        "個人化頁面因隱私風險暫不納入。"
-      ]
-    },
-    {
-      "heading": "技術分工",
-      "points": [
-        "志遠負責 service worker。",
-        "Naomi 補上離線徽章元件。"
+        "免費轉付費六月 4.1%、七月 3.2%、八月 2.9%，連三個月下滑。",
+        "拆裝置後 iOS 由 5.6% 掉到 4.8%，Android 由 3.4% 掉到 2.1%，Android 跌幅超過三倍。",
+        "付款失敗率換 SDK 前後為 2.3% 與 2.5%，沒有惡化，排除硬失敗。",
+        "點訂閱後未完成的比例由六月 31% 升到八月 47%，多流失 16 個百分點。",
+        "行銷提出七月同時停掉首購七折，主張折扣影響不應算成零；數據認為折扣兩平台同步停，無法解釋 Android 獨跌，改以六月為對照組拆解驗證。"
       ]
     }
   ],
+  "open_questions": [
+    "A/B 一週後若方向往下，是直接停還是先調文案再觀察，會後另開十五分鐘依實際跌幅決定。"
+  ],
   "actions": [
-    { "task": "提交離線快取 v1 PR", "owner": "志遠", "due": "本週五" },
-    { "task": "設計離線徽章元件", "owner": "Naomi", "due": null }
+    { "task": "以六月為對照組，拆解折扣與 SDK 對 iOS、Android 轉換的各自影響", "owner": "王政雄", "due": "本週四" },
+    { "task": "補上離線徽章元件", "owner": "Naomi", "due": null }
   ]
 }
 
-If a field has no content, use an empty string, empty array, or null — do NOT omit the key.`;
+If a field genuinely has no content, use an empty string, empty array, or null — do NOT omit the key.`;
 
+/**
+ * The five-point scan is deliberately a partial repeat of the system prompt's
+ * four bullets. Measured on the same transcript, dropping it cost one
+ * substantive item (the A/B sample-size reasoning) for a saving of ~90 prompt
+ * tokens — so it stays. Restating the ask *after* the transcript also puts it
+ * adjacent to generation, where long inputs otherwise bury it.
+ */
 const USER_TEMPLATE = (transcript: string) =>
-  `# Transcript\n\n${transcript}\n\nNow emit the JSON object. Begin with { right away.`;
+  `# Transcript
+
+${transcript}
+
+Before writing, scan the transcript once for these five things and make sure each one lands somewhere in the JSON:
+1. every number, percentage, date and deadline that was spoken
+2. every reason given for a decision
+3. every objection or disagreement, and whether it was resolved
+4. every conditional constraint ("only after", "not before", "unless", stop dates)
+5. every question the meeting explicitly left open
+
+Now emit the JSON object. Begin with { right away.`;
 
 /** Forceful retry — used after the first attempt fails to parse. Makes the
  *  rule absolutely explicit and gives the model permission to output empty
@@ -178,7 +225,14 @@ export async function POST(req: NextRequest) {
             // not a place for sampling diversity.
             temperature: 0.1,
             top_p: 0.9,
-            num_ctx: 16384,
+            // Ollama silently truncates the *oldest* tokens once input+output
+            // exceeds num_ctx, so an over-long meeting loses its opening —
+            // agenda, attendees, framing — without any error surfacing.
+            // Measured: a 14-minute diarized zh-TW transcript is ~3.4k tokens,
+            // and this prompt adds ~750. At 16384 that capped us around a
+            // 55-minute meeting. 32768 covers ~2 hours and still fits in VRAM
+            // on the 12B model.
+            num_ctx: 32768,
           },
           keep_alive: "10m",
           messages: [

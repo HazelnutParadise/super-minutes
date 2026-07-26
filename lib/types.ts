@@ -62,6 +62,10 @@ export interface MinutesReport {
   summary: string;
   conclusions: string[];
   topics: { heading: string; points: string[] }[];
+  /** Things the meeting explicitly left undecided or parked pending data.
+   *  Kept separate from `actions` because nobody owns them yet — they're the
+   *  items that quietly vanish when minutes only record what was settled. */
+  openQuestions: string[];
   actions: {
     task: string;
     owner?: string | null;
@@ -75,6 +79,7 @@ export function emptyReport(): MinutesReport {
     summary: "",
     conclusions: [],
     topics: [],
+    openQuestions: [],
     actions: [],
   };
 }
