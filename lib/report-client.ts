@@ -62,6 +62,9 @@ export interface GenerateReportOptions {
   onQueueStatus?: (status: { ahead: number }) => void;
   /** Fired exactly once when the BFF acquires the Ollama slot. */
   onProcessing?: () => void;
+  /** Fired for each step of the multi-pass pipeline that long meetings use.
+   *  Short meetings are a single call and never emit this. */
+  onStage?: (s: { label: string; step: number; total: number }) => void;
 }
 
 export async function generateReport(
@@ -106,6 +109,9 @@ export async function generateReport(
         body?: string;
         model?: string;
         ahead?: number;
+        label?: string;
+        step?: number;
+        total?: number;
       };
       try {
         msg = JSON.parse(line);
@@ -118,6 +124,12 @@ export async function generateReport(
       else if (msg.type === "queued")
         opts.onQueueStatus?.({ ahead: msg.ahead ?? 0 });
       else if (msg.type === "processing") opts.onProcessing?.();
+      else if (msg.type === "stage")
+        opts.onStage?.({
+          label: msg.label ?? "",
+          step: msg.step ?? 0,
+          total: msg.total ?? 0,
+        });
       else if (msg.type === "result") {
         envelope = { status: msg.status ?? 0, body: msg.body ?? "" };
         break outer;

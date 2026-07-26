@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Mutex } from "@/lib/server/mutex";
+import {
+  DEEP_THRESHOLD_CHARS,
+  generateDeepReport,
+} from "@/lib/server/deep-report";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,11 +17,14 @@ const MODEL = process.env.OLLAMA_MODEL ?? "gemma4:e4b";
  * model state. Serialising at the BFF gives the client a queue-position
  * signal and bounds Ollama-side memory pressure.
  *
- * Depth is lower than transcribe's (50) because each report is ~30-60s and
- * we'd rather 503 a 21st waiter than make them sit through 10+ minutes.
+ * Depth is much lower than transcribe's (50) because a report is no longer a
+ * single call: a short meeting is ~45s, but anything past half an hour runs the
+ * multi-pass pipeline and takes several minutes. At depth 8 the last waiter is
+ * looking at roughly half an hour, which is already the most we should let
+ * someone queue for without telling them to come back later.
  */
 const ollamaLock = new Mutex();
-const MAX_QUEUE_DEPTH = 20;
+const MAX_QUEUE_DEPTH = 8;
 
 interface ReportRequest {
   /** Concatenated transcript with speaker tags + timestamps. */
@@ -209,7 +216,10 @@ export async function POST(req: NextRequest) {
       const abort = new AbortController();
       req.signal.addEventListener("abort", () => abort.abort());
 
-      const callOllama = async (userMessage: string): Promise<{
+      const callOllama = async (
+        userMessage: string,
+        systemMessage: string = SYSTEM(languageName)
+      ): Promise<{
         ok: boolean;
         rawContent: string;
         upstreamStatus: number;
@@ -236,7 +246,7 @@ export async function POST(req: NextRequest) {
           },
           keep_alive: "10m",
           messages: [
-            { role: "system", content: SYSTEM(languageName) },
+            { role: "system", content: systemMessage },
             { role: "user", content: userMessage },
           ],
         };
@@ -308,6 +318,33 @@ export async function POST(req: NextRequest) {
           console.log(
             `[report] acquired Ollama slot after ${waitedMs}ms in queue`
           );
+        }
+
+        // Long meetings go through the multi-pass pipeline. One call emits a
+        // roughly fixed amount of output whatever the input length, so past
+        // about half an hour a single pass just spreads the same report over
+        // more meeting. See lib/server/deep-report.ts for the measurements.
+        if (payload.transcript.length >= DEEP_THRESHOLD_CHARS) {
+          console.log(
+            `[report] transcript is ${payload.transcript.length} chars; using the multi-pass pipeline`
+          );
+          const deep = await generateDeepReport({
+            transcript: payload.transcript,
+            languageName,
+            onProgress: (p) => emit({ type: "stage", ...p }),
+            call: async ({ system, user }) => {
+              const r = await callOllama(user, system);
+              if (!r.ok) throw new Error(r.upstreamBody || "Ollama upstream failed");
+              const parsed = extractJsonReport(r.rawContent);
+              return parsed.ok ? parsed.report : null;
+            },
+          });
+          emit({
+            type: "result",
+            status: 200,
+            body: JSON.stringify({ report: deep, language: languageName }),
+          });
+          return;
         }
 
         let attempt: {

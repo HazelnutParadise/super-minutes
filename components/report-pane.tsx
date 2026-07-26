@@ -55,6 +55,13 @@ export function ReportPane() {
    *  ahead>0 is the live "前面還有 N 個". */
   const [queueAhead, setQueueAhead] = useState<number | null>(null);
   const [processingActive, setProcessingActive] = useState(false);
+  /** Step readout for long meetings, which run a multi-pass pipeline that can
+   *  take several minutes. Null for short meetings (a single call). */
+  const [stage, setStage] = useState<{
+    label: string;
+    step: number;
+    total: number;
+  } | null>(null);
 
   // Default output language follows the source.
   useEffect(() => {
@@ -76,6 +83,7 @@ export function ReportPane() {
     setReportPending(true);
     setQueueAhead(null);
     setProcessingActive(false);
+    setStage(null);
     try {
       const transcript = buildTranscriptForLLM(segments, speakers);
       const lang =
@@ -96,6 +104,7 @@ export function ReportPane() {
           setQueueAhead(null);
           setProcessingActive(true);
         },
+        onStage: setStage,
       });
       setReport(r, language);
       toast.success("報告生成完成");
@@ -106,6 +115,7 @@ export function ReportPane() {
       setReportPending(false);
       setQueueAhead(null);
       setProcessingActive(false);
+      setStage(null);
     }
   }
 
@@ -211,7 +221,11 @@ export function ReportPane() {
        *  (replaces the report) or above an existing report (during a
        *  regenerate). */}
       {reportPending && (
-        <QueueBanner ahead={queueAhead} processing={processingActive} />
+        <QueueBanner
+          ahead={queueAhead}
+          processing={processingActive}
+          stage={stage}
+        />
       )}
 
       {/* The report itself. */}
@@ -231,9 +245,11 @@ export function ReportPane() {
 function QueueBanner({
   ahead,
   processing,
+  stage,
 }: {
   ahead: number | null;
   processing: boolean;
+  stage: { label: string; step: number; total: number } | null;
 }) {
   const isQueued = ahead !== null && ahead > 0;
   const isWaitingForSlot = ahead === 0 && !processing;
@@ -241,7 +257,9 @@ function QueueBanner({
     ? `排隊中　·　前面還有 ${ahead} 個`
     : isWaitingForSlot
       ? "排隊中　·　等待空檔"
-      : "AI 正在撰寫…";
+      : stage
+        ? `${stage.label}　·　${stage.step}/${stage.total}`
+        : "AI 正在撰寫…";
   return (
     <div
       className={cn(
