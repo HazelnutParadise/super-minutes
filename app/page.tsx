@@ -75,6 +75,7 @@ export default function Home() {
             <em className="font-display not-italic text-cream-100">會議紀要</em>、
             <em className="font-display not-italic text-cream-100">主要結論</em>、
             <em className="font-display not-italic text-cream-100">議題要點</em>、
+            <em className="font-display not-italic text-cream-100">待決事項</em>、
             <em className="font-display not-italic text-cream-100">待辦行動項</em>
             的會議報告。多語言通吃，繁體 / 簡體一鍵互轉。
           </p>
@@ -135,7 +136,7 @@ export default function Home() {
           <Step
             n="03"
             title="AI 整稿"
-            body="把逐字稿濃縮成 會議紀要、主要結論、議題要點、待辦行動項 四段結構化報告，輸出語言可自選。"
+            body="把逐字稿濃縮成 會議紀要、主要結論、議題要點、待決事項、待辦行動項 等結構化段落，輸出語言可自選。"
           />
           <Step
             n="04"

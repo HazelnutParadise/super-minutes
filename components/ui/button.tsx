@@ -3,27 +3,35 @@ import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
+/**
+ * Disabled styling is per-variant rather than a blanket `opacity-50`, because
+ * on this near-black page a half-transparent filled button blends into the
+ * background and takes its label with it: the vermillion CTA measured 3.31:1,
+ * below the 4.5:1 floor, and read as a rendering fault rather than as an
+ * unavailable control. Filled variants now mute the fill and keep a cream
+ * label; text-only variants just dim their text.
+ */
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-sm text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-sm text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:cursor-not-allowed disabled:shadow-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
         // Cream-on-ink default — the editorial standard.
         default:
-          "bg-cream-100 text-ink-900 shadow-sm hover:bg-cream-50 active:translate-y-px",
+          "bg-cream-100 text-ink-900 shadow-sm hover:bg-cream-50 active:translate-y-px disabled:bg-cream-100/[0.07] disabled:text-cream-100/60",
         // Vermillion — the one accent. Used for the single hero CTA.
         vermillion:
-          "bg-vermillion text-cream-100 shadow-[0_4px_14px_-4px_rgba(212,63,63,0.6)] hover:bg-vermillion-600 active:translate-y-px",
+          "bg-vermillion text-cream-100 shadow-[0_4px_14px_-4px_rgba(212,63,63,0.6)] hover:bg-vermillion-600 active:translate-y-px disabled:bg-vermillion/25 disabled:text-cream-100/60",
         // Ghost — text only, hairline border on hover.
         ghost:
-          "text-cream-100 hover:bg-cream-100/[0.06] hover:text-cream-50",
+          "text-cream-100 hover:bg-cream-100/[0.06] hover:text-cream-50 disabled:text-cream-100/50",
         // Outline — hairline rule, for secondary actions.
         outline:
-          "border border-cream-100/30 bg-transparent text-cream-100 hover:border-cream-100/60 hover:bg-cream-100/[0.04]",
+          "border border-cream-100/30 bg-transparent text-cream-100 hover:border-cream-100/60 hover:bg-cream-100/[0.04] disabled:border-cream-100/15 disabled:text-cream-100/50",
         // Destructive — used sparingly.
         destructive:
-          "bg-destructive text-destructive-foreground hover:bg-destructive/90",
-        link: "text-cream-100 underline-offset-4 hover:underline decoration-vermillion",
+          "bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:bg-destructive/25 disabled:text-cream-100/60",
+        link: "text-cream-100 underline-offset-4 hover:underline decoration-vermillion disabled:text-cream-100/50 disabled:no-underline",
       },
       size: {
         default: "h-9 px-4 py-2",

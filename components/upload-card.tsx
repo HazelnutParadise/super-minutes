@@ -607,7 +607,7 @@ export function UploadCard() {
               </>
             ) : (
               <>
-                生成逐字稿
+                製作報告
                 <ArrowRight className="h-4 w-4" />
               </>
             )}
