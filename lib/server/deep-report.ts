@@ -20,9 +20,15 @@
  *                 so a revisited subject still appears once.
  *   4. write    — one call per section; oversized sections get subtopics via
  *                 the same cut mechanism at section scale.
- *   5. closing  — summary, conclusions, open questions, actions.
- *   6. critic   — audit the report against the notes; dropped notes are routed
- *                 back to their section in code and patched in.
+ *   5. overview — summary and conclusions.
+ *   6. commitments — action items and open questions, in their own call so a
+ *                 meeting handing out thirty tasks doesn't lose the tail of the
+ *                 list to the summary's tokens.
+ *   7. critic   — audit the sections against the notes; dropped notes are
+ *                 routed back to their section in code and patched in.
+ *   8. commitments critic — the same audit for the two lists, which have no
+ *                 other safety net, plus a per-candidate check that each open
+ *                 question really is unresolved.
  *
  * Mechanism-over-model rules, each one paid for by a measured failure:
  *   - Every quantity the model must respect is computed from input size and
@@ -40,6 +46,13 @@
  *     already returned. Unusable groups are dropped BEFORE their stretches are
  *     claimed; stretches the model forgot join their nearest neighbour;
  *     nothing is silently discarded.
+ *   - A restrictive predicate applied across the whole note list collapses:
+ *     asked which notes held an uncovered commitment, the model returned 98 of
+ *     134 — ordinary explanation, which the patch step then wrote up as
+ *     invented open questions. The same model answers a single yes/no about a
+ *     single candidate correctly. So audits get a computed cap and are thrown
+ *     away wholesale when they blow it, and per-item judgements are asked one
+ *     item at a time.
  *
  * Rejected with evidence, do not retry: skipping the notes pass (16/30 vs
  * 27/30 — the dense sweep is what stops content vanishing); embedding
@@ -240,27 +253,60 @@ Emit ONE JSON object and nothing else: {"headings": ["...", "..."]} — one per 
 
 A sub-heading names the facet of the section that stretch covers ("成本試算", "供應商比較"), not the activity. Keep each under 14 characters.`;
 
-const CLOSING_SYSTEM = (languageName: string) =>
-  `You are writing the opening and closing parts of a meeting report from notes taken across the whole meeting.
+/**
+ * Overview and commitments are two calls, not one.
+ *
+ * They used to share a single closing call, which put the summary, the
+ * conclusions, the open questions and every action item in competition for the
+ * same fixed output budget — the exact failure the rest of this pipeline exists
+ * to avoid. A meeting that hands out thirty tasks would have lost the tail of
+ * the list with nothing to catch it. Splitting gives each its own budget.
+ */
+const OVERVIEW_SYSTEM = (languageName: string) =>
+  `You are writing the opening of a meeting report from notes taken across the whole meeting. Someone else records the action items and open questions — you do not.
 
 Emit ONE JSON object and nothing else:
-{"summary": "...", "conclusions": ["..."], "open_questions": ["..."], "actions": [{"task": "...", "owner": "...", "due": "..."}]}
+{"summary": "...", "conclusions": ["..."]}
 
 Write in ${languageName}.
 
 - \`summary\`: 4-6 sentences. What the meeting was for, what was actually covered, and what came out of it.
 - \`conclusions\`: the substantive points the meeting landed on. Each entry states the point AND the reason or evidence behind it in the same sentence.
-- \`open_questions\`: ONLY what was explicitly left unresolved, deferred, or waiting on someone. If a question was asked and answered, it is not an open question. Never add your own suggestions or "things worth considering". Empty array if nothing was left hanging.
-- \`actions\`: every commitment in the notes, with its owner. \`due\` is null when no deadline was given — never the string "N/A".
 
-If this was a briefing, Q&A or advisory session rather than a decision meeting, it may have settled little and produced almost no tasks. That is normal — do not manufacture decisions or action items to fill the fields.`;
+If this was a briefing, Q&A or advisory session rather than a decision meeting, it may have settled little. That is normal — record the substantive guidance actually given rather than manufacturing decisions.`;
 
-const CLOSING_USER = (notes: string[], headings: string[]) =>
+const OVERVIEW_USER = (notes: string[], headings: string[]) =>
   `# Sections already written for this report
 
 ${headings.map((h) => `- ${h}`).join("\n")}
 
 # All notes from the meeting, in order
+
+${notesBlock(notes)}
+
+Emit the JSON object now. Begin with { right away.`;
+
+const COMMITMENTS_SYSTEM = (languageName: string) =>
+  `You are extracting the action items and open questions from a meeting's notes. You are NOT writing the summary or the discussion — only these two lists.
+
+Emit ONE JSON object and nothing else:
+{"open_questions": [{"question": "...", "evidence": "..."}], "actions": [{"task": "...", "owner": "...", "due": "..."}]}
+
+Write in ${languageName}.
+
+- \`actions\`: every commitment anyone made, including ones buried mid-discussion and ones agreed in passing. One entry per commitment — do not merge two people's tasks into one line, and do not stop early. \`owner\` is who committed, or null if nobody was named. \`due\` uses the speaker's own wording, or null when no deadline was given — never the string "N/A".
+- \`open_questions\`: ONLY what the meeting explicitly parked, and each one must be evidenced.
+  - \`evidence\`: copy the words from the notes that park it, character for character — "先擱著", "還沒決定", "等資料出來再說", "下次再談", "之後再看". This is checked against the notes; an entry whose evidence is not found there is thrown away.
+  - If you cannot copy such words out of the notes, there is no open question to write. A question someone asked and someone answered is not one, however interesting the answer was. A limitation the speaker explained is not one either — that is a fact, and it belongs in the body of the report.
+  - If a person is going to do it, it is an action item, not an open question.
+  - Never add your own suggestions or "things worth considering". An empty array is the normal answer for most meetings.
+
+Go through the notes in order and take every commitment as you reach it. A long meeting can produce a long list; length is set by what was actually promised, not by tidiness.
+
+If this was a briefing, Q&A or advisory session, it may have produced almost no tasks. That is normal — do NOT manufacture action items to fill the field.`;
+
+const COMMITMENTS_USER = (notes: string[]) =>
+  `# All notes from the meeting, in order
 
 ${notesBlock(notes)}
 
@@ -286,6 +332,95 @@ ${notesBlock(notes)}
 ${points.map((p) => `- ${p}`).join("\n")}
 
 Emit {"missing": [...]} now. Begin with { right away.`;
+
+/** The topic critic audits prose against notes; this one audits two lists that
+ *  have no other safety net — a dropped commitment is the most expensive kind
+ *  of omission a set of minutes can have. */
+/**
+ * Second gate on open questions, asked one candidate at a time.
+ *
+ * The evidence check catches invented quotes but not misapplied ones: the
+ * model would paste a whole note as "evidence" and pass trivially, which is
+ * how two settled facts ("亞馬遜沒有做到那麼精細") were filed as still open.
+ * A keyword list for parking phrases would catch those, but the app writes
+ * reports in ten languages and a Chinese lexicon only defends one of them.
+ * Asking a single yes/no about a single candidate is language-neutral, and it
+ * is the shape of question this model answers well — unlike a restrictive
+ * predicate applied across a hundred notes at once.
+ */
+const OPEN_QUESTION_VERIFY_SYSTEM = `You are checking one claim about a meeting: that a particular matter was left unresolved.
+
+Emit ONE JSON object and nothing else: {"answered": true} or {"answered": false}
+
+Answer \`true\` if the notes show the meeting resolved it — someone gave an answer, stated the fact, made the decision, or explained how it works. An interesting explanation counts as an answer.
+
+Answer \`false\` only if the notes show it genuinely hanging: deferred to later, waiting on data or on a person, or explicitly not decided.
+
+When the notes contain an answer, say true even if the matter is complicated or the answer was partial.`;
+
+const OPEN_QUESTION_VERIFY_USER = (question: string, notes: string[]) =>
+  `# Notes from the meeting
+
+${notesBlock(notes)}
+
+# The matter claimed to be unresolved
+
+${question}
+
+Did the meeting resolve it? Emit the JSON now. Begin with { right away.`;
+
+const COMMITMENTS_CRITIC_SYSTEM = (cap: number) =>
+  `You are auditing the action items and open questions of a meeting report against the notes they were drawn from. You are looking for the rare note that records a promise or an explicitly unsettled matter which neither list covers.
+
+Emit ONE JSON object and nothing else: {"missing": [12, 47]}
+
+Report a note ONLY if it passes one of these two tests:
+- Someone said they will do something: "我來…", "我負責…", "禮拜五前給你", "下週我去…". A named or implied person, and a thing they will do.
+- The meeting explicitly parked something: "先擱著", "還沒決定", "等資料出來再說", "下次再談".
+
+Everything else is NOT missing. In particular, a note is not missing merely because the lists do not mention it. Explanation, advice, opinion, background, worked examples, numbers, questions that got an answer, greetings and scheduling chatter all belong to the body of the report and are correctly absent from these two lists.
+
+**Most notes are not missing.** In a normal meeting fewer than one note in ten is. Emit at most ${cap} numbers. If you find yourself listing more, you are reporting ordinary discussion — go back and keep only the notes that pass a test above.
+
+If nothing is missing, emit {"missing": []}.`;
+
+const COMMITMENTS_CRITIC_USER = (
+  notes: string[],
+  actions: { task: string; owner?: string | null; due?: string | null }[],
+  openQuestions: string[]
+) =>
+  `# Notes, numbered
+
+${notesBlock(notes)}
+
+# Action items currently recorded
+
+${actions.length ? actions.map((a) => `- ${a.task}${a.owner ? `（${a.owner}）` : ""}`).join("\n") : "(none)"}
+
+# Open questions currently recorded
+
+${openQuestions.length ? openQuestions.map((q) => `- ${q}`).join("\n") : "(none)"}
+
+Emit {"missing": [...]} now. Begin with { right away.`;
+
+const COMMITMENTS_SUPPLEMENT_USER = (
+  mine: string[],
+  actions: { task: string; owner?: string | null; due?: string | null }[],
+  openQuestions: string[]
+) =>
+  `# Action items already recorded — do not repeat these
+
+${actions.length ? actions.map((a) => `- ${a.task}`).join("\n") : "(none)"}
+
+# Open questions already recorded — do not repeat these
+
+${openQuestions.length ? openQuestions.map((q) => `- ${q}`).join("\n") : "(none)"}
+
+# Notes whose commitments or unresolved matters are missing from those lists
+
+${notesBlock(mine)}
+
+Write ONLY the additional entries needed to cover these notes. Emit the JSON object now. Begin with { right away.`;
 
 const SUPPLEMENT_USER = (heading: string, mine: string[], existing: string[]) =>
   `# Section being extended
@@ -436,6 +571,71 @@ const strings = (v: unknown): string[] =>
     ? v.filter((x): x is string => typeof x === "string" && x.trim().length > 0)
     : [];
 
+export interface ReportAction {
+  task: string;
+  owner?: string | null;
+  due?: string | null;
+}
+
+/** Model output → action list. Drops entries with no task, and treats the
+ *  string "N/A" as the absent deadline it actually means. */
+export function normaliseActions(v: unknown): ReportAction[] {
+  return Array.isArray(v)
+    ? (v as Record<string, unknown>[])
+        .filter(
+          (a) => a && typeof a.task === "string" && (a.task as string).trim()
+        )
+        .map((a) => ({
+          task: (a.task as string).trim(),
+          owner:
+            typeof a.owner === "string" && a.owner.trim() ? a.owner.trim() : null,
+          due:
+            typeof a.due === "string" && a.due.trim() && a.due !== "N/A"
+              ? a.due.trim()
+              : null,
+        }))
+    : [];
+}
+
+/** Comparison key for near-duplicate detection: the supplement pass is told
+ *  not to repeat existing entries and mostly obeys, but re-words them just
+ *  enough that exact matching would let the duplicate through. */
+export function normaliseKey(s: string): string {
+  return s
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/[。．.、,，:：;；!！?？（）()「」【】]/gu, "");
+}
+
+/**
+ * Keep only the open questions whose evidence is really in the notes.
+ *
+ * Telling the model what does not count as an open question does not work: it
+ * kept writing down facts the meeting had settled ("亞馬遜沒有做到那麼精細")
+ * as things still open. Making it quote the words that parked the matter turns
+ * the rule into something code can check — and an entry it cannot support gets
+ * dropped. Failing closed is right here: an invented open question misleads,
+ * while a missing one still has its content in the body of the report.
+ */
+export function verifiedOpenQuestions(raw: unknown, notes: string[]): string[] {
+  if (!Array.isArray(raw)) return [];
+  const haystack = normaliseKey(notes.join(""));
+  const out: string[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const { question, evidence } = item as Record<string, unknown>;
+    if (typeof question !== "string" || !question.trim()) continue;
+    if (typeof evidence !== "string" || !evidence.trim()) continue;
+    const key = normaliseKey(evidence);
+    // Too short to be evidence of anything — "再看" matches half a transcript.
+    if (key.length < 3) continue;
+    if (!haystack.includes(key)) continue;
+    out.push(question.trim());
+  }
+  return out;
+}
+
 // ------------------------------------------------------------------ pipeline
 
 export async function generateDeepReport({
@@ -451,9 +651,11 @@ export async function generateDeepReport({
 }): Promise<DeepReportResult> {
   const slices = sliceTranscript(transcript);
 
-  // Step total is provisional until the outline exists; it only grows, so the
-  // progress readout never jumps backwards.
-  let total = slices.length + 4 + 7;
+  // Fixed stages: cut, group, overview, commitments, critic, commitments
+  // critic. Step total is provisional until the outline exists; it only grows,
+  // so the progress readout never jumps backwards.
+  const FIXED_STAGES = 6;
+  let total = slices.length + FIXED_STAGES + 7;
   let step = 0;
   const report = (stage: string, label: string) =>
     onProgress?.({ stage, label, step: ++step, total });
@@ -499,7 +701,7 @@ export async function generateDeepReport({
     throw new Error("歸納議題失敗：模型沒有給出任何分組");
 
   const headings = sections.map((s) => s.heading);
-  total = slices.length + 4 + sections.length;
+  total = slices.length + FIXED_STAGES + sections.length;
 
   const writePoints = async (heading: string, mine: string[], others: string[]) => {
     const points: string[] = [];
@@ -571,12 +773,24 @@ export async function generateDeepReport({
     topics.push({ heading: s.heading, points: [], subtopics });
   }
 
-  // 5 — closing.
-  report("closing", "整理紀要與待辦");
-  const closing = await call({
-    system: CLOSING_SYSTEM(languageName),
-    user: CLOSING_USER(notes, headings),
+  // 5 — overview, then commitments. Two calls so a meeting that hands out
+  // thirty tasks doesn't lose the tail of the list to the summary's tokens.
+  report("overview", "整理會議紀要");
+  const overview = await call({
+    system: OVERVIEW_SYSTEM(languageName),
+    user: OVERVIEW_USER(notes, headings),
   });
+
+  report("commitments", "整理待辦與待決");
+  const commitments = await call({
+    system: COMMITMENTS_SYSTEM(languageName),
+    user: COMMITMENTS_USER(notes),
+  });
+  const actions = normaliseActions(commitments?.actions);
+  const openQuestions = verifiedOpenQuestions(
+    commitments?.open_questions,
+    notes
+  );
 
   // 6 — critic. Model finds dropped notes; code routes and patches them.
   report("critic", "檢查遺漏並補寫");
@@ -630,16 +844,84 @@ export async function generateDeepReport({
     }
   }
 
-  const c = closing ?? {};
-  const actions = Array.isArray(c.actions)
-    ? (c.actions as Record<string, unknown>[])
-        .filter((a) => a && typeof a.task === "string" && (a.task as string).trim())
-        .map((a) => ({
-          task: a.task as string,
-          owner: typeof a.owner === "string" ? a.owner : null,
-          due: typeof a.due === "string" && a.due !== "N/A" ? a.due : null,
-        }))
-    : [];
+  // 7 — commitments critic. Actions and open questions have no other safety
+  // net: unlike topic points they are not split across calls, so a dropped
+  // commitment would simply be gone.
+  report("commitments-critic", "檢查漏掉的待辦");
+  const commitmentCap = Math.max(3, Math.round(notes.length / 10));
+  const cCritic = await call({
+    system: COMMITMENTS_CRITIC_SYSTEM(commitmentCap),
+    user: COMMITMENTS_CRITIC_USER(notes, actions, openQuestions),
+  });
+  let missedCommitments = [
+    ...new Set(
+      (Array.isArray(cCritic?.missing) ? cCritic.missing : [])
+        .map((n) => Math.trunc(Number(n)))
+        .filter((n) => Number.isFinite(n) && n >= 1 && n <= notes.length)
+    ),
+  ];
+  // Over-reporting means the audit collapsed into "notes not quoted in these
+  // lists", which for a 134-note meeting once returned 98 — ordinary
+  // explanation that the supplement then turned into invented open questions.
+  // A blown budget makes the whole audit untrustworthy, so drop it rather than
+  // patch from it: the lists stay as the commitments pass wrote them.
+  if (missedCommitments.length > commitmentCap) {
+    console.log(
+      `[deep-report] commitments critic reported ${missedCommitments.length} of ${notes.length} notes against a cap of ${commitmentCap}; discarding the audit`
+    );
+    missedCommitments = [];
+  }
+
+  if (missedCommitments.length) {
+    const patch = await call({
+      system: COMMITMENTS_SYSTEM(languageName),
+      user: COMMITMENTS_SUPPLEMENT_USER(
+        missedCommitments.map((i) => notes[i - 1]),
+        actions,
+        openQuestions
+      ),
+    });
+    // Dedupe in code — the prompt asks the model not to repeat itself, but a
+    // near-duplicate task is exactly the kind of thing it slips on.
+    const seenTasks = new Set(actions.map((a) => normaliseKey(a.task)));
+    for (const a of normaliseActions(patch?.actions)) {
+      const k = normaliseKey(a.task);
+      if (seenTasks.has(k)) continue;
+      seenTasks.add(k);
+      actions.push(a);
+    }
+    const seenQs = new Set(openQuestions.map(normaliseKey));
+    for (const q of verifiedOpenQuestions(patch?.open_questions, notes)) {
+      const k = normaliseKey(q);
+      if (seenQs.has(k)) continue;
+      seenQs.add(k);
+      openQuestions.push(q);
+    }
+  }
+
+  // An open question restating an action item is the one overlap the two
+  // fields can produce, and the model does it: it wrote "團隊必須先討論清楚…"
+  // into both. Code settles it — a thing with an owner is a task, not an open
+  // question.
+  const actionKeys = new Set(actions.map((a) => normaliseKey(a.task)));
+  const candidates = openQuestions.filter(
+    (q) => !actionKeys.has(normaliseKey(q))
+  );
+
+  // Second gate: ask about each candidate on its own. Candidates are few, so
+  // this costs little, and a settled matter filed as still-open is the most
+  // misleading thing this section can contain.
+  const finalOpenQuestions: string[] = [];
+  for (const q of candidates) {
+    const verdict = await call({
+      system: OPEN_QUESTION_VERIFY_SYSTEM,
+      user: OPEN_QUESTION_VERIFY_USER(q, notes),
+    });
+    if (verdict?.answered === true) continue;
+    finalOpenQuestions.push(q);
+  }
+
+  const c = overview ?? {};
 
   return {
     title:
@@ -656,7 +938,7 @@ export async function generateDeepReport({
         points: p,
       })),
     })),
-    open_questions: strings(c.open_questions),
+    open_questions: finalOpenQuestions,
     actions,
   };
 }

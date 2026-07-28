@@ -13,6 +13,9 @@ import {
   evenRanges,
   groupsToSections,
   routeNote,
+  normaliseActions,
+  normaliseKey,
+  verifiedOpenQuestions,
 } from "../lib/server/deep-report.ts";
 
 let pass = 0;
@@ -102,6 +105,101 @@ eq(
   secs.map((s) => s.indices),
   [[1, 2, 3, 4, 9, 10, 11, 12], [5, 6, 7, 8, 13, 14, 15, 16]]
 );
+
+// --- normaliseActions: model output → action list ---
+eq(
+  "actions keep task/owner/due",
+  normaliseActions([{ task: " 交報告 ", owner: " 小美 ", due: " 週五 " }]),
+  [{ task: "交報告", owner: "小美", due: "週五" }]
+);
+eq(
+  'actions treat "N/A" and blanks as no deadline',
+  normaliseActions([
+    { task: "A", owner: "x", due: "N/A" },
+    { task: "B", owner: "", due: "   " },
+  ]),
+  [
+    { task: "A", owner: "x", due: null },
+    { task: "B", owner: null, due: null },
+  ]
+);
+eq(
+  "actions drop entries with no task",
+  normaliseActions([{ task: "  ", owner: "x" }, { owner: "y" }, { task: "C" }]),
+  [{ task: "C", owner: null, due: null }]
+);
+eq("actions non-array → empty", normaliseActions(null), []);
+
+// --- normaliseKey: near-duplicate detection for the supplement pass ---
+eq(
+  "key ignores spacing and trailing punctuation",
+  normaliseKey(" 交出 報告。") === normaliseKey("交出報告"),
+  true
+);
+eq(
+  "key ignores brackets and case",
+  normaliseKey("Ship PR（本週）") === normaliseKey("ship pr本週"),
+  true
+);
+eq(
+  "key keeps genuinely different tasks apart",
+  normaliseKey("交報告") === normaliseKey("交企劃"),
+  false
+);
+
+// --- verifiedOpenQuestions: an entry survives only if its evidence is real ---
+const NOTES = [
+  "怡君說折扣的影響先擱著，等政雄禮拜四的拆解出來再定調。",
+  "亞馬遜後臺的頁面瀏覽沒有細分到圖片或影片，不像 GA4 可以埋 call。",
+];
+eq(
+  "keeps an entry whose evidence is in the notes",
+  verifiedOpenQuestions(
+    [{ question: "折扣影響多大還沒定調。", evidence: "先擱著" }],
+    NOTES
+  ),
+  ["折扣影響多大還沒定調。"]
+);
+eq(
+  "drops an answered fact dressed up as an open question",
+  verifiedOpenQuestions(
+    [
+      {
+        question: "頁面瀏覽能不能細分到圖片或影片？",
+        evidence: "這件事還沒有結論",
+      },
+    ],
+    NOTES
+  ),
+  []
+);
+eq(
+  "evidence matching ignores punctuation and spacing",
+  verifiedOpenQuestions(
+    [{ question: "Q", evidence: " 等政雄，禮拜四的拆解出來。" }],
+    NOTES
+  ),
+  ["Q"]
+);
+eq(
+  "drops entries with missing or empty fields",
+  verifiedOpenQuestions(
+    [
+      { question: "", evidence: "先擱著" },
+      { question: "Q", evidence: "  " },
+      { question: "Q2" },
+      "not an object",
+    ],
+    NOTES
+  ),
+  []
+);
+eq(
+  "drops evidence too short to mean anything",
+  verifiedOpenQuestions([{ question: "Q", evidence: "再" }], NOTES),
+  []
+);
+eq("non-array → empty", verifiedOpenQuestions(null, NOTES), []);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

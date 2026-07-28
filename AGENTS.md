@@ -13,8 +13,15 @@ holds working agreements and open follow-ups.
   or thresholds, several "obvious improvements" are already measured as worse.
 - Pure plumbing in `deep-report.ts` is tested:
   `node --experimental-strip-types scripts/deep-report.test.mjs`.
-- A 68-minute meeting takes ~13 minutes end to end on gemma4:e4b; the user has
-  accepted this (2026-07-27).
+- A 68-minute meeting takes ~18 minutes end to end on gemma4:e4b; the user
+  accepted ~13 minutes on 2026-07-27 and the commitments split added to that.
+- Recurring lesson with this model class: it is reliable on a small, focused
+  judgement and unreliable on a restrictive predicate applied across a long
+  list. Prefer many small calls with computed budgets over one clever prompt,
+  and have code discard a step's output when it blows its budget.
+- `open_questions` is the field that invents content. It has three gates:
+  quoted evidence checked against the notes, a per-candidate "was this
+  answered?" call, and dedup against action items. Empty is a normal result.
 
 ## Follow-ups
 

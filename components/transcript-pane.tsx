@@ -6,6 +6,39 @@ import { cn, formatTimeFull } from "@/lib/utils";
 import { Pencil, Check, Type, ListPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useAutoGrow } from "@/lib/use-auto-grow";
+
+/** In-place editor for one segment. Split out of the row so the growing
+ *  textarea can hold a hook — rows are rendered in a map. */
+function SegmentEditor({
+  value,
+  onChange,
+  onCommit,
+  onCancel,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  onCommit: () => void;
+  onCancel: () => void;
+}) {
+  const ref = useAutoGrow(value);
+  return (
+    <textarea
+      ref={ref}
+      autoFocus
+      value={value}
+      rows={1}
+      onChange={(e) => onChange(e.target.value)}
+      onClick={(e) => e.stopPropagation()}
+      onBlur={onCommit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) onCommit();
+        if (e.key === "Escape") onCancel();
+      }}
+      className="mt-1.5 w-full resize-none overflow-hidden rounded-sm border border-vermillion/40 bg-ink-800/60 px-2 py-1.5 font-han text-[15px] leading-relaxed text-cream-50 outline-none focus:border-vermillion"
+    />
+  );
+}
 
 /** Ledger-style transcript. Each segment is a row. Click row to seek; click
  *  pencil to edit text in-place. Speaker chip color from the project store. */
@@ -178,20 +211,11 @@ export function TranscriptPane() {
                     </span>
                   </div>
                   {editing ? (
-                    <textarea
-                      autoFocus
+                    <SegmentEditor
                       value={draft}
-                      onChange={(e) => setDraft(e.target.value)}
-                      onClick={(e) => e.stopPropagation()}
-                      onBlur={commitEdit}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                          commitEdit();
-                        }
-                        if (e.key === "Escape") setEditingId(null);
-                      }}
-                      className="mt-1.5 w-full resize-none rounded-sm border border-vermillion/40 bg-ink-800/60 px-2 py-1.5 font-han text-[15px] leading-relaxed text-cream-50 outline-none focus:border-vermillion"
-                      rows={Math.max(1, Math.ceil(draft.length / 36))}
+                      onChange={setDraft}
+                      onCommit={commitEdit}
+                      onCancel={() => setEditingId(null)}
                     />
                   ) : (
                     <p className="mt-1 font-han text-[15px] leading-[1.7] text-cream-100 text-pretty">

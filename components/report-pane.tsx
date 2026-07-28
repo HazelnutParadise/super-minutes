@@ -35,6 +35,7 @@ import {
   LANGUAGE_NAMES,
 } from "@/lib/report-client";
 import { exportMarkdown, exportDocx, exportPdf } from "@/lib/export";
+import { useAutoGrow } from "@/lib/use-auto-grow";
 import { cn } from "@/lib/utils";
 
 /** The right-hand pane — the report itself, plus controls to regenerate and
@@ -347,11 +348,9 @@ function ReportBody() {
 
       {/* Summary. */}
       <Section ordinal="I" title="會議紀要">
-        <Textarea
+        <SummaryField
           value={report.summary}
-          onChange={(e) => update({ summary: e.target.value })}
-          rows={Math.max(2, Math.ceil(report.summary.length / 36))}
-          className="font-han text-[15px] leading-[1.85] text-cream-100 border-cream-100/10 bg-transparent focus-visible:border-vermillion/40"
+          onChange={(v) => update({ summary: v })}
         />
       </Section>
 
@@ -568,6 +567,60 @@ function Section({
   );
 }
 
+/** Its own component so the growing textarea can hold a hook — list items are
+ *  rendered in a map, where hooks can't live. */
+function SummaryField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  const ref = useAutoGrow(value);
+  return (
+    <Textarea
+      ref={ref}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      rows={1}
+      className="overflow-hidden font-han text-[15px] leading-[1.85] text-cream-100 border-cream-100/10 bg-transparent focus-visible:border-vermillion/40"
+    />
+  );
+}
+
+function PointRow({
+  value,
+  onChange,
+  onRemove,
+  placeholder,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  onRemove: () => void;
+  placeholder: string;
+}) {
+  const ref = useAutoGrow(value);
+  return (
+    <li className="group flex items-start gap-3 rounded-sm border border-transparent px-2 py-1.5 hover:border-cream-100/10">
+      <span className="mt-2 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-vermillion" />
+      <textarea
+        ref={ref}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        rows={1}
+        className="w-full resize-none overflow-hidden bg-transparent font-han text-[15px] leading-[1.8] text-cream-100 outline-none"
+        placeholder={placeholder}
+      />
+      <button
+        onClick={onRemove}
+        className="opacity-0 transition-opacity group-hover:opacity-100"
+      >
+        <Trash2 className="h-3.5 w-3.5 text-cream-400 hover:text-vermillion" />
+      </button>
+    </li>
+  );
+}
+
 function EditableList({
   items,
   onChange,
@@ -580,35 +633,21 @@ function EditableList({
   return (
     <ul className="space-y-2">
       {items.map((item, i) => (
-        <li
+        <PointRow
           key={i}
-          className={cn(
-            "group flex items-start gap-3 rounded-sm border border-transparent px-2 py-1.5 hover:border-cream-100/10"
-          )}
-        >
-          <span className="mt-2 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-vermillion" />
-          <textarea
-            value={item}
-            onChange={(e) => {
-              const next = items.slice();
-              next[i] = e.target.value;
-              onChange(next);
-            }}
-            rows={Math.max(1, Math.ceil(item.length / 40))}
-            className="w-full resize-none bg-transparent font-han text-[15px] leading-[1.8] text-cream-100 outline-none"
-            placeholder={placeholder}
-          />
-          <button
-            onClick={() => {
-              const next = items.slice();
-              next.splice(i, 1);
-              onChange(next);
-            }}
-            className="opacity-0 transition-opacity group-hover:opacity-100"
-          >
-            <Trash2 className="h-3.5 w-3.5 text-cream-400 hover:text-vermillion" />
-          </button>
-        </li>
+          value={item}
+          placeholder={placeholder}
+          onChange={(v) => {
+            const next = items.slice();
+            next[i] = v;
+            onChange(next);
+          }}
+          onRemove={() => {
+            const next = items.slice();
+            next.splice(i, 1);
+            onChange(next);
+          }}
+        />
       ))}
       <li>
         <button
@@ -634,6 +673,7 @@ function ActionRow({
   onRemove: () => void;
 }) {
   const [done, setDone] = useState(false);
+  const taskRef = useAutoGrow(value.task);
   return (
     <div
       className={cn(
@@ -650,11 +690,12 @@ function ActionRow({
         {done && <CheckSquare className="h-3 w-3" />}
       </button>
       <textarea
+        ref={taskRef}
         value={value.task}
         onChange={(e) => onChange({ task: e.target.value })}
         rows={1}
         className={cn(
-          "resize-none bg-transparent font-han text-[15px] leading-relaxed text-cream-100 outline-none",
+          "resize-none overflow-hidden bg-transparent font-han text-[15px] leading-relaxed text-cream-100 outline-none",
           done && "line-through text-cream-400"
         )}
         placeholder="行動項…"
