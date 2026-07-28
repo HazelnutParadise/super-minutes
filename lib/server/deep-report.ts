@@ -209,11 +209,11 @@ Rules:
 - Do not lump distinct subjects to shorten the list. If a group's heading would have to be vague to cover its stretches ("其他事項", "綜合討論"), it is two or three groups — split it and name each precisely.
 - Aim for about ${target} groups. A group holding more than ${lumpCap} stretches is almost certainly lumping.`;
 
-const GROUP_USER = (digests: string) =>
+const GROUP_USER = (digests: string, feedback?: string) =>
   `# Stretches, in meeting order
 
 ${digests}
-
+${feedback ? `\n# What went wrong last time\n\n${feedback}\n` : ""}
 Emit the JSON now. Begin with { right away.`;
 
 const TOPIC_SYSTEM = (languageName: string) =>
@@ -535,6 +535,17 @@ export function groupsToSections(rawSections: unknown, ranges: Range[]): Section
     .sort((a, b) => a.ranges[0][0] - b.ranges[0][0]);
 }
 
+/**
+ * How many stretches the biggest section holds — the same measure the group
+ * prompt is handed as `lumpCap`, so code can check what the prompt asked for.
+ * Counting sections instead would be the wrong test: a meeting that really did
+ * stay on one subject for an hour should produce one section, and forcing a
+ * split there would invent boundaries the recording does not have.
+ */
+export function maxStretchesPerSection(sections: Section[]): number {
+  return sections.reduce((m, s) => Math.max(m, s.ranges.length), 0);
+}
+
 /** Which section owns note i. Pure lookup, -1 when none. */
 export function routeNote(i: number, sections: Section[]): number {
   for (let s = 0; s < sections.length; s++) {
@@ -692,11 +703,44 @@ export async function generateDeepReport({
   report("group", "歸納議題分組");
   const target = Math.max(3, Math.round(ranges.length * 0.5));
   const lumpCap = Math.max(3, Math.round(ranges.length / 3));
-  const groupRes = await call({
-    system: GROUP_SYSTEM(languageName, target, lumpCap),
-    user: GROUP_USER(digest(notes, ranges)),
-  });
-  const sections = groupsToSections(groupRes?.sections, ranges);
+  const digests = digest(notes, ranges);
+  const attemptGrouping = async (feedback?: string) => {
+    const res = await call({
+      system: GROUP_SYSTEM(languageName, target, lumpCap),
+      user: GROUP_USER(digests, feedback),
+    });
+    return {
+      sections: groupsToSections(res?.sections, ranges),
+      title: typeof res?.title === "string" ? res.title : "",
+    };
+  };
+
+  // The cut step's budget is enforced in code; grouping's was only asked for,
+  // and one run put all 15 stretches under a single heading. Retry once with
+  // what went wrong, then keep whichever attempt lumps less — a retry that
+  // comes back worse is discarded, so this can only improve or tie.
+  let grouped = await attemptGrouping();
+  const worst = maxStretchesPerSection(grouped.sections);
+  if (!grouped.sections.length || worst > lumpCap) {
+    console.log(
+      `[deep-report] grouping put ${worst} of ${ranges.length} stretches under one heading (cap ${lumpCap}); retrying once`
+    );
+    const retry = await attemptGrouping(
+      grouped.sections.length
+        ? `You put ${worst} of the ${ranges.length} stretches under a single heading. That is more than the ${lumpCap} a group may hold, and it produces a section too long to read. Look again at where the subject genuinely changes and split that material.`
+        : `Your previous attempt returned no usable groups. Every stretch number must appear in exactly one group, and every group needs a heading.`
+    );
+    if (
+      retry.sections.length &&
+      (!grouped.sections.length ||
+        maxStretchesPerSection(retry.sections) < worst)
+    ) {
+      grouped = retry;
+    }
+  }
+
+  const sections = grouped.sections;
+  const groupTitle = grouped.title;
   if (!sections.length)
     throw new Error("歸納議題失敗：模型沒有給出任何分組");
 
@@ -925,8 +969,8 @@ export async function generateDeepReport({
 
   return {
     title:
-      typeof groupRes?.title === "string" && (groupRes.title as string).trim()
-        ? (groupRes.title as string)
+      groupTitle.trim()
+        ? groupTitle
         : "會議報告",
     summary: typeof c.summary === "string" ? c.summary : "",
     conclusions: strings(c.conclusions),

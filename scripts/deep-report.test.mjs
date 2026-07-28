@@ -16,6 +16,7 @@ import {
   normaliseActions,
   normaliseKey,
   verifiedOpenQuestions,
+  maxStretchesPerSection,
 } from "../lib/server/deep-report.ts";
 
 let pass = 0;
@@ -105,6 +106,36 @@ eq(
   secs.map((s) => s.indices),
   [[1, 2, 3, 4, 9, 10, 11, 12], [5, 6, 7, 8, 13, 14, 15, 16]]
 );
+
+// --- maxStretchesPerSection: the lumping measure the retry guard checks ---
+eq(
+  "lumping measure reads the biggest section",
+  maxStretchesPerSection(
+    groupsToSections(
+      [{ heading: "A", stretches: [1, 2, 3] }, { heading: "B", stretches: [4] }],
+      R
+    )
+  ),
+  3
+);
+eq(
+  "an evenly split meeting measures low",
+  maxStretchesPerSection(
+    groupsToSections(
+      [{ heading: "A", stretches: [1, 2] }, { heading: "B", stretches: [3, 4] }],
+      R
+    )
+  ),
+  2
+);
+eq(
+  "a collapsed grouping measures the whole meeting",
+  maxStretchesPerSection(
+    groupsToSections([{ heading: "全部", stretches: [1, 2, 3, 4] }], R)
+  ),
+  4
+);
+eq("no sections measures zero", maxStretchesPerSection([]), 0);
 
 // --- normaliseActions: model output → action list ---
 eq(
