@@ -25,16 +25,6 @@ holds working agreements and open follow-ups.
 
 ## Follow-ups
 
-- Rerun one full end-to-end multi-pass report (68-minute recording) to close
-  out the top-level-cut removal. The change is behavior-equivalent by
-  construction and a live run exercised the new flow through 14 of 15 steps,
-  but both verification runs died mid-pipeline when the Ollama host went down
-  (ping 100% loss) — in code the change does not touch. Needs the host back.
-- A 17-minute pipeline dies wholesale on one transient upstream failure: two
-  runs were lost to a single dropped socket ("terminated", "fetch failed") in
-  `callOllama`. One retry on network-level errors (not on parse failures)
-  would have saved both. Worth adding when touching `app/api/report/route.ts`.
-
 - `RETRY_USER_TEMPLATE` in `app/api/report/route.ts` resends the entire
   transcript when the single-pass path retries after unparseable JSON, doubling
   that request's cost. Consider retrying with the parse error + a trimmed

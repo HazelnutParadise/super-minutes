@@ -216,6 +216,18 @@ export async function POST(req: NextRequest) {
       const abort = new AbortController();
       req.signal.addEventListener("abort", () => abort.abort());
 
+      /**
+       * Streaming is not cosmetic here — it is what keeps long generations
+       * alive. Node's fetch (undici) enforces a 300-second headers timeout,
+       * and with `stream: false` Ollama sends its response headers only after
+       * the whole generation finishes, so any call that generates for longer
+       * than 300 seconds dies with "fetch failed". Three pipeline runs were
+       * lost to exactly this on a degraded host (deaths at ~300s into a call,
+       * to the second). With streaming the headers arrive immediately and
+       * tokens flow continuously, so slow generation cannot hit the ceiling —
+       * while a genuinely hung upstream is still killed by the 300s
+       * between-chunks body timeout, which is the failure that deserves it.
+       */
       const callOllama = async (
         userMessage: string,
         systemMessage: string = SYSTEM(languageName)
@@ -227,7 +239,7 @@ export async function POST(req: NextRequest) {
       }> => {
         const upstreamBody = {
           model,
-          stream: false,
+          stream: true,
           format: "json",
           options: {
             // Lower temp than before — we want deterministic JSON. The model
@@ -256,29 +268,67 @@ export async function POST(req: NextRequest) {
           body: JSON.stringify(upstreamBody),
           signal: abort.signal,
         });
-        const text = await r.text();
-        if (!r.ok) {
+        if (!r.ok || !r.body) {
+          const text = await r.text().catch(() => "");
           return {
             ok: false,
             rawContent: "",
-            upstreamStatus: r.status,
+            upstreamStatus: r.ok ? 502 : r.status,
             upstreamBody: text,
           };
         }
-        let parsed: OllamaChatResponse;
-        try {
-          parsed = JSON.parse(text);
-        } catch {
+        // Accumulate the NDJSON stream. Each line carries a content delta;
+        // `done: true` closes the generation, `error` aborts it.
+        const reader = r.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let content = "";
+        const consume = (line: string): string | null => {
+          if (!line.trim()) return null;
+          let j: OllamaChatResponse & { done?: boolean };
+          try {
+            j = JSON.parse(line);
+          } catch {
+            // A malformed line is upstream corruption; surface it rather than
+            // silently building a report from a partial generation.
+            return `unparseable stream line: ${line.slice(0, 200)}`;
+          }
+          if (j.error) return j.error;
+          content += j.message?.content ?? "";
+          return null;
+        };
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (value) {
+            buffer += decoder.decode(value, { stream: true });
+            let nl;
+            while ((nl = buffer.indexOf("\n")) !== -1) {
+              const err = consume(buffer.slice(0, nl));
+              buffer = buffer.slice(nl + 1);
+              if (err) {
+                return {
+                  ok: false,
+                  rawContent: content,
+                  upstreamStatus: 502,
+                  upstreamBody: err,
+                };
+              }
+            }
+          }
+          if (done) break;
+        }
+        const tailErr = consume(buffer);
+        if (tailErr) {
           return {
             ok: false,
-            rawContent: text,
+            rawContent: content,
             upstreamStatus: 502,
-            upstreamBody: text,
+            upstreamBody: tailErr,
           };
         }
         return {
           ok: true,
-          rawContent: parsed.message?.content ?? "",
+          rawContent: content,
           upstreamStatus: 200,
           upstreamBody: "",
         };
