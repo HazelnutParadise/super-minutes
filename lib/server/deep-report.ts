@@ -14,19 +14,19 @@
  * The pipeline spends more calls instead of a bigger model:
  *
  *   1. notes    — sweep the transcript in slices, extracting dense notes.
- *   2. cut      — mark subject transitions over the notes. Numbers only.
- *   3. group    — group + name the stretches into sections. A meeting that
- *                 doubles back shows up as non-adjacent stretches in one group,
- *                 so a revisited subject still appears once.
- *   4. write    — one call per section; oversized sections get subtopics via
- *                 the same cut mechanism at section scale.
- *   5. overview — summary and conclusions.
- *   6. commitments — action items and open questions, in their own call so a
+ *   2. group    — slice the notes into even stretches and have the model group
+ *                 + name them into sections from content digests. A meeting
+ *                 that doubles back shows up as non-adjacent stretches in one
+ *                 group, so a revisited subject still appears once.
+ *   3. write    — one call per section; oversized sections get subtopics via a
+ *                 boundary-marking cut at section scale.
+ *   4. overview — summary and conclusions.
+ *   5. commitments — action items and open questions, in their own call so a
  *                 meeting handing out thirty tasks doesn't lose the tail of the
  *                 list to the summary's tokens.
- *   7. critic   — audit the sections against the notes; dropped notes are
+ *   6. critic   — audit the sections against the notes; dropped notes are
  *                 routed back to their section in code and patched in.
- *   8. commitments critic — the same audit for the two lists, which have no
+ *   7. commitments critic — the same audit for the two lists, which have no
  *                 other safety net, plus a per-candidate check that each open
  *                 question really is unresolved.
  *
@@ -39,9 +39,10 @@
  *     its stretches it ignored a 9-22 budget and returned 133 segments; asking
  *     the outline to assign all 134 notes to headings needed a catch-all
  *     heading that swallowed 84 of them.
- *   - Code enforces what prompts request. A cut that exceeds its budget falls
- *     back to even mechanical segmentation and the grouping step does the
- *     semantic work from digests — a failed cut degrades instead of exploding.
+ *   - Code enforces what prompts request. The subtopic cut falls back to even
+ *     segmentation when it exceeds its budget, and grouping retries once when
+ *     one section swallows too many stretches — a misbehaving call degrades
+ *     instead of exploding.
  *   - Merging, routing and patch placement are pure code over data the model
  *     already returned. Unusable groups are dropped BEFORE their stretches are
  *     claimed; stretches the model forgot join their nearest neighbour;
@@ -60,7 +61,11 @@
  * stretches has a flat similarity landscape: at 0.75 nothing merges, at 0.70
  * everything collapses into one blob); heading-reuse or index-based "resumes"
  * markers in a single outline call (either never used, used wrongly, or
- * over-used until 134 notes became 4 sections).
+ * over-used until 134 notes became 4 sections); a top-level semantic cut
+ * before grouping (it blew its budget on every run observed and was always
+ * discarded, so every shipped score came from even segmentation anyway — and
+ * when its boundaries were let through they fragmented the report into 13-16
+ * sections, while merging them down to budget merely tied even segmentation).
  */
 
 /** Calls the model and returns the parsed JSON object, or null if unparseable. */
@@ -662,10 +667,10 @@ export async function generateDeepReport({
 }): Promise<DeepReportResult> {
   const slices = sliceTranscript(transcript);
 
-  // Fixed stages: cut, group, overview, commitments, critic, commitments
-  // critic. Step total is provisional until the outline exists; it only grows,
-  // so the progress readout never jumps backwards.
-  const FIXED_STAGES = 6;
+  // Fixed stages: group, overview, commitments, critic, commitments critic.
+  // Step total is provisional until the outline exists; it only grows, so the
+  // progress readout never jumps backwards.
+  const FIXED_STAGES = 5;
   let total = slices.length + FIXED_STAGES + 7;
   let step = 0;
   const report = (stage: string, label: string) =>
@@ -683,21 +688,19 @@ export async function generateDeepReport({
   }
   if (!notes.length) throw new Error("擷取重點失敗：模型沒有回傳任何內容");
 
-  // 2 — cut. Numbers only; code enforces the budget the prompt requests.
-  report("cut", "標記主題分界");
+  // 2 — even segmentation. There used to be a semantic cut call here; it was
+  // removed after measurement, not on a hunch. It exceeded its computed budget
+  // on every run observed (26-27 boundaries against a cap of 22, plus four
+  // one-note stretches), so its output was always discarded for this even
+  // segmentation — meaning every shipped report's 25-28/30 score came from
+  // this path with the cut contributing nothing but ~40s of model time. And
+  // the counterfactual was measured too: letting the semantic boundaries
+  // through produced 13-16 fragmented sections against 6-7 from even
+  // segmentation, and merging them down to budget merely tied. The semantic
+  // work belongs to the grouping step, which reads content digests; the
+  // stretches only need to be evenly sized raw material for it.
   const { lo, hi } = cutBudget(notes.length);
-  const typical = Math.max(2, Math.round(notes.length / ((lo + hi) / 2)));
-  const cutRes = await call({
-    system: CUT_SYSTEM(lo, hi, typical),
-    user: CUT_USER(notes),
-  });
-  let ranges = boundariesToRanges(cutRes?.boundaries, notes.length);
-  if (ranges.length > hi) {
-    console.log(
-      `[deep-report] cut returned ${ranges.length} stretches against a budget of ${hi}; using even segmentation`
-    );
-    ranges = evenRanges(notes.length, Math.round((lo + hi) / 2));
-  }
+  const ranges = evenRanges(notes.length, Math.round((lo + hi) / 2));
 
   // 3 — group + name.
   report("group", "歸納議題分組");

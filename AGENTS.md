@@ -25,18 +25,6 @@ holds working agreements and open follow-ups.
 
 ## Follow-ups
 
-- The cut step in `lib/server/deep-report.ts` overshoots its upper budget on
-  every run measured (26-27 boundaries against a cap of 22, 5 of 5 runs on the
-  68-minute recording), so its semantic segmentation is always discarded and
-  replaced by mechanical even segmentation — about 40 seconds of model time
-  currently buying nothing. The cap is `Math.round(n / 6)`, a guess that was
-  never measured; the model consistently wants roughly one stretch per 5 notes.
-  Either widen the cap, or merge the smallest stretches down to the cap instead
-  of discarding the model's boundaries wholesale. Neither has been measured
-  against report quality, which is 25-28/30 today with the fallback firing every
-  time — so this may be no better in practice, and needs measuring rather than
-  assuming.
-
 - `RETRY_USER_TEMPLATE` in `app/api/report/route.ts` resends the entire
   transcript when the single-pass path retries after unparseable JSON, doubling
   that request's cost. Consider retrying with the parse error + a trimmed
